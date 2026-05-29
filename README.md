@@ -17,14 +17,15 @@ Social MCP giúp agents không cần phải giải DOM — chỉ cần gọi too
 
 ## Ghi chú về test automation / DX khi dev
 
-Hiện tại social platforms yêu cầu đăng nhập thật nên không thể có automated UI/integration test "thuần local" cho toàn bộ flow UI.
+Hiện tại social platforms yêu cầu đăng nhập thật nên không thể có automated UI/integration test hoàn toàn offline/không credentials thật cho toàn bộ flow UI.
 
 Hướng làm thực tế để tăng tốc dev:
 - Dùng Playwright MCP + tương tác thủ công để đăng nhập **một lần** vào các nền tảng cần test.
 - Cache lại browser state/resources cho môi trường dev.
 - Các thư mục cache này phải để local và đã được `.gitignore` (`.cache/playwright-mcp/`, `resources/playwright-mcp/`) để tránh lộ cookies/session.
 
-> Đây là giải pháp thực dụng (không triệt để), phù hợp cho vòng lặp dev/test nhanh khi chưa có chiến lược test end-to-end đầy đủ.
+> Đây là giải pháp thực dụng (không triệt để), phù hợp cho vòng lặp dev/test nhanh.
+> Với bản chất phụ thuộc đăng nhập và UI thật của social platforms, đây cũng là ràng buộc dài hạn; nếu mở rộng sau này thì nên bổ sung thêm lớp mock/contract test ở tầng server/tool schema.
 
 ## Kiến trúc
 
