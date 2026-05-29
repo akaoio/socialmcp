@@ -15,9 +15,9 @@ Các giải pháp như Playwright MCP có điểm nghẽn là DOM rất lớn:
 
 Social MCP giúp agents không cần phải giải DOM — chỉ cần gọi tools như `post`, `comment`, `react`... như một nhân viên thực thụ.
 
-## Ghi chú về Unit Test / DX khi dev
+## Ghi chú về test automation / DX khi dev
 
-Hiện tại social platforms yêu cầu đăng nhập thật nên không thể có unit test "thuần local" cho toàn bộ flow UI.
+Hiện tại social platforms yêu cầu đăng nhập thật nên không thể có automated UI/integration test "thuần local" cho toàn bộ flow UI.
 
 Hướng làm thực tế để tăng tốc dev:
 - Dùng Playwright MCP + tương tác thủ công để đăng nhập **một lần** vào các nền tảng cần test.
