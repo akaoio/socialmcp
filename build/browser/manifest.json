@@ -7,8 +7,14 @@
   "permissions": [
     "tabs",
     "alarms",
-    "scripting"
+    "scripting",
+    "storage"
   ],
+
+  "action": {
+    "default_title": "Social MCP",
+    "default_popup": "popup.html"
+  },
 
   "host_permissions": [
     "ws://127.0.0.1/*",

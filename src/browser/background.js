@@ -131,3 +131,13 @@ chrome.alarms.onAlarm.addListener(alarm => {
 });
 
 connect().catch(e => console.error('[socialmcp]', e));
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type !== 'ui:dispatch') return false;
+
+  dispatch(msg.platform, msg.action, msg.params ?? {})
+    .then(result => sendResponse({ result }))
+    .catch(err => sendResponse({ error: err.message }));
+
+  return true;
+});
