@@ -56,6 +56,9 @@ src/
   browser/
     manifest.json          # Chrome Extension MV3 manifest
     background.js          # Service worker: WebSocket client + tab routing
+    popup.html             # Human UI: platform panels + action forms
+    popup.css              # Human UI style (vanilla CSS)
+    popup.js               # Human UI logic (manual dispatch)
     facebook/content.js    # Facebook DOM actions
     x/content.js           # X DOM actions
     instagram/content.js   # Instagram DOM actions
@@ -75,6 +78,7 @@ build/                     # Bản build minified
 node src/server/index.js
 
 # Load extension từ src/browser/ (Chrome → Load unpacked)
+# Mở popup của extension để chạy tool thủ công theo từng platform
 ```
 
 ### Build production

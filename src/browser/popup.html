@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Social MCP</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>Social MCP</h1>
+        <p>Manual control panel for browser automation.</p>
+      </header>
+
+      <section class="panel">
+        <h2>Bridge secret</h2>
+        <div class="row">
+          <input id="secret" type="password" placeholder="socialmcp-local-default" />
+          <button id="savesecret" type="button">Save</button>
+        </div>
+      </section>
+
+      <nav id="tabs" class="tabs"></nav>
+      <section id="forms" class="forms"></section>
+
+      <section class="panel">
+        <h2>Result</h2>
+        <pre id="result">Ready.</pre>
+      </section>
+    </main>
+
+    <script src="./popup.js" type="module"></script>
+  </body>
+</html>

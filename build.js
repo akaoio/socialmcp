@@ -94,9 +94,12 @@ async function buildext() {
     console.log(`✓ ${p}/content → build/browser/${p}/content.js`);
   }
 
-  // Copy manifest.json
+  // Copy static extension assets
   fs.copyFileSync('src/browser/manifest.json', `${outdir}/manifest.json`);
-  console.log('✓ manifest.json copied');
+  fs.copyFileSync('src/browser/popup.html', `${outdir}/popup.html`);
+  fs.copyFileSync('src/browser/popup.css', `${outdir}/popup.css`);
+  fs.copyFileSync('src/browser/popup.js', `${outdir}/popup.js`);
+  console.log('✓ manifest + popup assets copied');
 }
 
 // ── Runner ────────────────────────────────────────────────────────────────────
