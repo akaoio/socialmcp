@@ -1,50 +1,37 @@
 (function () {
   'use strict';
 
-  /**
-   * threads/content.js
-   * Handles all DOM interactions on threads.net.
-   *
-   * Threads shares infrastructure with Instagram (Meta) so patterns
-   * are similar, but the DOM structure differs.
-   */
-
-  // ── Selectors ─────────────────────────────────────────────────────────────────
-
   const S = {
-    // Composer
     newpostbtn:   '[aria-label="Create"]',
     composerbox:  'div[contenteditable="true"][role="textbox"]',
     postbtn:      'div[role="button"]:has-text("Post")',
 
-    // Feed
     article:      'article',
     postcontent:  'span[dir="auto"]',
     postauthor:   'a[role="link"] span',
     postlink:     'a[href*="/post/"]',
 
-    // Like
     likebtn:      'svg[aria-label="Like"], svg[aria-label="Unlike"]',
 
-    // Reply / Comment
     replybtn:     'svg[aria-label="Reply"]',
     replyinput:   'div[contenteditable="true"][role="textbox"]',
     replypost:    'div[role="button"]:has-text("Post")',
 
-    // Search
     searchbox:    'input[name="q"], input[placeholder*="earch"]',
 
-    // Follow / Unfollow
     followbtn:    'div[role="button"]:has-text("Follow")',
     unfollowbtn:  'div[role="button"]:has-text("Following")',
     unfollowconfirm: 'div[role="button"]:has-text("Unfollow")',
 
-    // Profile
     profilename:  'h1, h2',
     profilebio:   'span[dir="auto"]:not(h1 span):not(h2 span)',
   };
 
-  // ── Utilities ─────────────────────────────────────────────────────────────────
+  /**
+   * common/utils.js
+   * Shared DOM utilities for all platform content scripts.
+   * Exported as plain functions — rollup tree-shakes unused ones per platform.
+   */
 
   function wait(selector, timeout = 8000) {
     return new Promise((resolve, reject) => {
@@ -66,6 +53,12 @@
       document.execCommand('selectAll', false);
       document.execCommand('delete', false);
       document.execCommand('insertText', false, text);
+    } else {
+      const proto  = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+      setter.call(el, text);
+      el.dispatchEvent(new Event('input',  { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
     }
   }
 
@@ -74,8 +67,6 @@
       el.dispatchEvent(new KeyboardEvent(t, { key, code: key, bubbles: true }))
     );
   }
-
-  // ── Action handlers ───────────────────────────────────────────────────────────
 
   async function post({ content }) {
     const btn = await wait(S.newpostbtn);
@@ -116,16 +107,29 @@
     return { success: true };
   }
 
-  async function scroll({ count = 10 }) {
-    const seen = new Set();
+  /**
+   * common/scroll.js
+   * Generic feed-scroll shared by all platforms.
+   *
+   * @param {object} params   - { count }
+   * @param {object} sel      - { article, text, author, link }
+   *   article  — selector for the post container
+   *   text     — selector for post body text (inside article)
+   *   author   — selector for author name (inside article)
+   *   link     — selector for permalink anchor (inside article)
+   */
+
+
+  async function scroll$1({ count = 10 }, sel) {
+    const seen  = new Set();
     const posts = [];
 
     for (let attempts = 0; posts.length < count && attempts < 30; attempts++) {
-      document.querySelectorAll(S.article).forEach(item => {
+      document.querySelectorAll(sel.article).forEach(item => {
         if (posts.length >= count) return;
-        const text   = item.querySelector(S.postcontent)?.innerText?.trim();
-        const author = item.querySelector(S.postauthor)?.innerText?.trim();
-        const link   = item.querySelector(S.postlink)?.href;
+        const text   = item.querySelector(sel.text)?.innerText?.trim();
+        const author = item.querySelector(sel.author)?.innerText?.trim();
+        const link   = item.querySelector(sel.link)?.href;
         if (text && !seen.has(text)) {
           seen.add(text);
           posts.push({ author, text, link });
@@ -139,6 +143,15 @@
     }
 
     return { posts };
+  }
+
+  function scroll(params) {
+    return scroll$1(params, {
+      article: S.article,
+      text:    S.postcontent,
+      author:  S.postauthor,
+      link:    S.postlink,
+    });
   }
 
   async function search({ query }) {
@@ -178,20 +191,21 @@
   }
 
   async function message() {
-    // Threads does not yet have a standalone DM interface via DOM
     throw new Error('Direct messaging is not available on Threads via DOM automation');
   }
 
   async function profile() {
-    const name    = document.querySelector(S.profilename)?.innerText?.trim();
-    const bios    = [...document.querySelectorAll(S.profilebio)];
-    const bio     = bios.find(el => el.innerText?.trim())?.innerText?.trim();
-    [...document.querySelectorAll('span')].filter(s => /\d/.test(s.innerText));
+    const name = document.querySelector(S.profilename)?.innerText?.trim();
+    const bios = [...document.querySelectorAll(S.profilebio)];
+    const bio  = bios.find(el => el.innerText?.trim())?.innerText?.trim();
 
     return { name, bio, url: window.location.href };
   }
 
-  // ── Router ────────────────────────────────────────────────────────────────────
+  /**
+   * threads/content.js � entry point (rollup bundles this into build/browser/threads/content.js)
+   */
+
 
   const HANDLERS = { post, comment, react, scroll, search, follow, unfollow, message, profile };
 
@@ -203,7 +217,7 @@
     }
     handler(msg.params ?? {})
       .then(result => sendResponse({ result }))
-      .catch(err => sendResponse({ error: err.message }));
+      .catch(err  => sendResponse({ error: err.message }));
     return true;
   });
 

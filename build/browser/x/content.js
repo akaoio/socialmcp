@@ -1,42 +1,28 @@
 (function () {
   'use strict';
 
-  /**
-   * x/content.js
-   * Handles all DOM interactions on x.com.
-   */
-
-  // ── Selectors ─────────────────────────────────────────────────────────────────
-
   const S = {
-    // Composer
     composerbtn:  '[data-testid="SideNav_NewTweet_Button"], [aria-label="Post"]',
     composerbox:  '[data-testid="tweetTextarea_0"]',
     postbtn:      '[data-testid="tweetButton"], [data-testid="tweetButtonInline"]',
 
-    // Feed
     article:      'article[data-testid="tweet"]',
     tweettext:    '[data-testid="tweetText"]',
     tweetauthor:  '[data-testid="User-Name"]',
     tweetlink:    'a[href*="/status/"]',
 
-    // Reactions
     likebtn:      '[data-testid="like"]',
 
-    // Reply / Comment
     replybtn:     '[data-testid="reply"]',
     replyinput:   '[data-testid="tweetTextarea_0"]',
     replybtnpost: '[data-testid="tweetButton"]',
 
-    // Search
     searchbox:    '[data-testid="SearchBox_Search_Input"]',
 
-    // Follow / Unfollow
     followbtn:    '[data-testid$="-follow"]',
     unfollowbtn:  '[data-testid$="-unfollow"]',
     unfollowconfirm: '[data-testid="confirmationSheetConfirm"]',
 
-    // DM
     dmcompose:    '[aria-label="New message"]',
     dmsearch:     '[aria-label="Search people"]',
     dmresult:     '[data-testid="TypeaheadUser"]',
@@ -44,14 +30,17 @@
     dminput:      '[data-testid="dmComposerTextInput"]',
     dmsend:       '[data-testid="dmComposerSendButton"]',
 
-    // Profile
-    profilename:     '[data-testid="UserName"]',
-    profilebio:      '[data-testid="UserDescription"]',
-    followerslink:   'a[href$="/followers"]',
-    followinglink:   'a[href$="/following"]',
+    profilename:   '[data-testid="UserName"]',
+    profilebio:    '[data-testid="UserDescription"]',
+    followerslink: 'a[href$="/followers"]',
+    followinglink: 'a[href$="/following"]',
   };
 
-  // ── Utilities ─────────────────────────────────────────────────────────────────
+  /**
+   * common/utils.js
+   * Shared DOM utilities for all platform content scripts.
+   * Exported as plain functions — rollup tree-shakes unused ones per platform.
+   */
 
   function wait(selector, timeout = 8000) {
     return new Promise((resolve, reject) => {
@@ -74,9 +63,11 @@
       document.execCommand('delete', false);
       document.execCommand('insertText', false, text);
     } else {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      const proto  = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
       setter.call(el, text);
-      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('input',  { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
     }
   }
 
@@ -85,8 +76,6 @@
       el.dispatchEvent(new KeyboardEvent(t, { key, code: key, bubbles: true }))
     );
   }
-
-  // ── Action handlers ───────────────────────────────────────────────────────────
 
   async function post({ content }) {
     const composerbtn = await wait(S.composerbtn);
@@ -127,16 +116,29 @@
     return { success: true };
   }
 
-  async function scroll({ count = 10 }) {
-    const seen = new Set();
+  /**
+   * common/scroll.js
+   * Generic feed-scroll shared by all platforms.
+   *
+   * @param {object} params   - { count }
+   * @param {object} sel      - { article, text, author, link }
+   *   article  — selector for the post container
+   *   text     — selector for post body text (inside article)
+   *   author   — selector for author name (inside article)
+   *   link     — selector for permalink anchor (inside article)
+   */
+
+
+  async function scroll$1({ count = 10 }, sel) {
+    const seen  = new Set();
     const posts = [];
 
     for (let attempts = 0; posts.length < count && attempts < 30; attempts++) {
-      document.querySelectorAll(S.article).forEach(item => {
+      document.querySelectorAll(sel.article).forEach(item => {
         if (posts.length >= count) return;
-        const text   = item.querySelector(S.tweettext)?.innerText?.trim();
-        const author = item.querySelector(S.tweetauthor)?.innerText?.trim();
-        const link   = item.querySelector(S.tweetlink)?.href;
+        const text   = item.querySelector(sel.text)?.innerText?.trim();
+        const author = item.querySelector(sel.author)?.innerText?.trim();
+        const link   = item.querySelector(sel.link)?.href;
         if (text && !seen.has(text)) {
           seen.add(text);
           posts.push({ author, text, link });
@@ -150,6 +152,15 @@
     }
 
     return { posts };
+  }
+
+  function scroll(params) {
+    return scroll$1(params, {
+      article: S.article,
+      text:    S.tweettext,
+      author:  S.tweetauthor,
+      link:    S.tweetlink,
+    });
   }
 
   async function search({ query, type: searchType = 'posts' }) {
@@ -196,7 +207,6 @@
   }
 
   async function message({ user: username, content }) {
-    // Navigate to DM compose via sidebar
     const dmBtn = await wait(S.dmcompose);
     dmBtn.click();
     await sleep(800);
@@ -233,7 +243,10 @@
     return { name, bio, followers, following, url: window.location.href };
   }
 
-  // ── Router ────────────────────────────────────────────────────────────────────
+  /**
+   * x/content.js � entry point (rollup bundles this into build/browser/x/content.js)
+   */
+
 
   const HANDLERS = { post, comment, react, scroll, search, follow, unfollow, message, profile };
 
@@ -245,7 +258,7 @@
     }
     handler(msg.params ?? {})
       .then(result => sendResponse({ result }))
-      .catch(err => sendResponse({ error: err.message }));
+      .catch(err  => sendResponse({ error: err.message }));
     return true;
   });
 

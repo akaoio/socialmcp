@@ -1,48 +1,31 @@
 (function () {
   'use strict';
 
-  /**
-   * instagram/content.js
-   * Handles all DOM interactions on instagram.com.
-   *
-   * Instagram heavily obfuscates class names; aria-labels and data-testid
-   * attributes are used wherever possible for stability.
-   */
-
-  // ── Selectors ─────────────────────────────────────────────────────────────────
-
   const S = {
-    // Composer
     newpostbtn:   'svg[aria-label="New post"]',
     composerimg:  'input[type="file"][accept*="image"]',
     compositext:  '[aria-label="Write a caption…"]',
     nextstep:     'button:has-text("Next"), div[role="button"]:has-text("Next")',
     sharebtn:     'div[role="button"]:has-text("Share")',
 
-    // Feed
     article:      'article',
-    postcontent:  'div > span:not([class])', // caption text
+    postcontent:  'div > span:not([class])',
     postauthor:   'header a',
     postlink:     'a[href*="/p/"]',
 
-    // Like
     likebtn:      'svg[aria-label="Like"], svg[aria-label="Unlike"]',
 
-    // Comment
     commentbtn:   'svg[aria-label="Comment"]',
     commentinput: 'textarea[aria-label="Add a comment…"]',
     commentpost:  'div[role="button"]:has-text("Post")',
 
-    // Search
     searchbox:    'input[placeholder="Search"]',
     searchresult: 'div[role="button"]',
 
-    // Follow / Unfollow
     followbtn:    'button:has-text("Follow")',
     unfollowbtn:  'button:has-text("Following"), button:has-text("Requested")',
     unfollowconfirm: 'button:has-text("Unfollow")',
 
-    // DM
     dmcompose:    'svg[aria-label="New message"]',
     dmsearch:     'input[placeholder="Search…"]',
     dmresult:     'div[role="button"]',
@@ -50,14 +33,17 @@
     dminput:      'textarea[placeholder="Message…"]',
     dmsend:       'div[role="button"]:has-text("Send")',
 
-    // Profile
     profilename:     'h2',
     profilebio:      'div.-vDIg span, section > div:nth-child(2)',
     followerscount:  'a[href$="/followers/"] span, button:has-text("followers") span',
     followingcount:  'a[href$="/following/"] span',
   };
 
-  // ── Utilities ─────────────────────────────────────────────────────────────────
+  /**
+   * common/utils.js
+   * Shared DOM utilities for all platform content scripts.
+   * Exported as plain functions — rollup tree-shakes unused ones per platform.
+   */
 
   function wait(selector, timeout = 8000) {
     return new Promise((resolve, reject) => {
@@ -75,17 +61,16 @@
 
   function type(el, text) {
     el.focus();
-    if (el.isContentEditable || el.tagName === 'TEXTAREA') {
-      const setter = el.isContentEditable
-        ? null
-        : Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
-      if (setter) {
-        setter.call(el, text);
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      } else {
-        document.execCommand('selectAll', false);
-        document.execCommand('insertText', false, text);
-      }
+    if (el.isContentEditable) {
+      document.execCommand('selectAll', false);
+      document.execCommand('delete', false);
+      document.execCommand('insertText', false, text);
+    } else {
+      const proto  = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+      setter.call(el, text);
+      el.dispatchEvent(new Event('input',  { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
     }
   }
 
@@ -95,16 +80,11 @@
     );
   }
 
-  // ── Action handlers ───────────────────────────────────────────────────────────
-
   async function post({ content }) {
-    // Instagram requires clicking the + / New Post button in the nav
     const btn = await wait(S.newpostbtn);
     btn.closest('[role="button"], a, button')?.click();
     await sleep(600);
 
-    // Caption step — assumes user has set up photo upload separately,
-    // here we only set caption for text-based posts / reels
     const caption = await wait(S.compositext, 5000).catch(() => null);
     if (caption) {
       type(caption, content);
@@ -140,16 +120,29 @@
     return { success: true };
   }
 
-  async function scroll({ count = 10 }) {
-    const seen = new Set();
+  /**
+   * common/scroll.js
+   * Generic feed-scroll shared by all platforms.
+   *
+   * @param {object} params   - { count }
+   * @param {object} sel      - { article, text, author, link }
+   *   article  — selector for the post container
+   *   text     — selector for post body text (inside article)
+   *   author   — selector for author name (inside article)
+   *   link     — selector for permalink anchor (inside article)
+   */
+
+
+  async function scroll$1({ count = 10 }, sel) {
+    const seen  = new Set();
     const posts = [];
 
     for (let attempts = 0; posts.length < count && attempts < 30; attempts++) {
-      document.querySelectorAll(S.article).forEach(item => {
+      document.querySelectorAll(sel.article).forEach(item => {
         if (posts.length >= count) return;
-        const text   = item.querySelector(S.postcontent)?.innerText?.trim();
-        const author = item.querySelector(S.postauthor)?.innerText?.trim();
-        const link   = item.querySelector(S.postlink)?.href;
+        const text   = item.querySelector(sel.text)?.innerText?.trim();
+        const author = item.querySelector(sel.author)?.innerText?.trim();
+        const link   = item.querySelector(sel.link)?.href;
         if (text && !seen.has(text)) {
           seen.add(text);
           posts.push({ author, text, link });
@@ -163,6 +156,15 @@
     }
 
     return { posts };
+  }
+
+  function scroll(params) {
+    return scroll$1(params, {
+      article: S.article,
+      text:    S.postcontent,
+      author:  S.postauthor,
+      link:    S.postlink,
+    });
   }
 
   async function search({ query }) {
@@ -234,7 +236,10 @@
     return { name, bio, followers, following, url: window.location.href };
   }
 
-  // ── Router ────────────────────────────────────────────────────────────────────
+  /**
+   * instagram/content.js � entry point (rollup bundles this into build/browser/instagram/content.js)
+   */
+
 
   const HANDLERS = { post, comment, react, scroll, search, follow, unfollow, message, profile };
 
@@ -246,7 +251,7 @@
     }
     handler(msg.params ?? {})
       .then(result => sendResponse({ result }))
-      .catch(err => sendResponse({ error: err.message }));
+      .catch(err  => sendResponse({ error: err.message }));
     return true;
   });
 

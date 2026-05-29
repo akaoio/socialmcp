@@ -2,14 +2,10 @@
   'use strict';
 
   /**
-   * facebook/content.js
-   * Handles all DOM interactions on facebook.com.
-   *
-   * Selectors are grouped at the top for easy maintenance when Facebook
-   * changes their markup — which happens frequently.
+   * facebook/selectors.js
+   * All CSS selectors for facebook.com in one place.
+   * Update only here when Facebook changes markup.
    */
-
-  // ── Selectors ─────────────────────────────────────────────────────────────────
 
   const S = {
     // Feed composer
@@ -47,7 +43,11 @@
     profilebio:      '[data-overflowtooltip-content]',
   };
 
-  // ── Utilities ─────────────────────────────────────────────────────────────────
+  /**
+   * common/utils.js
+   * Shared DOM utilities for all platform content scripts.
+   * Exported as plain functions — rollup tree-shakes unused ones per platform.
+   */
 
   function wait(selector, timeout = 8000) {
     return new Promise((resolve, reject) => {
@@ -55,17 +55,14 @@
       (function check() {
         const el = document.querySelector(selector);
         if (el) return resolve(el);
-        if (Date.now() - start > timeout) return reject(new Error(`Timeout waiting for: ${selector}`));
+        if (Date.now() - start > timeout) return reject(new Error(`Timeout: ${selector}`));
         setTimeout(check, 200);
       })();
     });
   }
 
-  function sleep(ms) {
-    return new Promise(r => setTimeout(r, ms));
-  }
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-  // Works with React-managed contenteditable fields and plain inputs
   function type(el, text) {
     el.focus();
     if (el.isContentEditable) {
@@ -73,9 +70,10 @@
       document.execCommand('delete', false);
       document.execCommand('insertText', false, text);
     } else {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      const proto  = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
       setter.call(el, text);
-      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('input',  { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
     }
   }
@@ -85,8 +83,6 @@
       el.dispatchEvent(new KeyboardEvent(t, { key, code: key, bubbles: true }))
     );
   }
-
-  // ── Action handlers ───────────────────────────────────────────────────────────
 
   async function post({ content }) {
     const trigger = await wait(S.composertrigger);
@@ -124,28 +120,44 @@
     if (reaction === 'like') {
       btn.click();
     } else {
-      // Hold over Like button to open reaction picker
       btn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
       await sleep(700);
       const picker = document.querySelector(`[aria-label="${cap(reaction)}"]`);
       if (picker) picker.click();
-      else btn.click(); // fallback to like
+      else btn.click();
     }
 
     await sleep(500);
     return { success: true };
   }
 
-  async function scroll({ count = 10 }) {
-    const seen = new Set();
+  function cap(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+
+  /**
+   * common/scroll.js
+   * Generic feed-scroll shared by all platforms.
+   *
+   * @param {object} params   - { count }
+   * @param {object} sel      - { article, text, author, link }
+   *   article  — selector for the post container
+   *   text     — selector for post body text (inside article)
+   *   author   — selector for author name (inside article)
+   *   link     — selector for permalink anchor (inside article)
+   */
+
+
+  async function scroll$1({ count = 10 }, sel) {
+    const seen  = new Set();
     const posts = [];
 
     for (let attempts = 0; posts.length < count && attempts < 30; attempts++) {
-      document.querySelectorAll(S.article).forEach(item => {
+      document.querySelectorAll(sel.article).forEach(item => {
         if (posts.length >= count) return;
-        const text   = item.querySelector(S.postcontent)?.innerText?.trim();
-        const author = item.querySelector(S.postauthor)?.innerText?.trim();
-        const link   = item.querySelector(S.postlink)?.href;
+        const text   = item.querySelector(sel.text)?.innerText?.trim();
+        const author = item.querySelector(sel.author)?.innerText?.trim();
+        const link   = item.querySelector(sel.link)?.href;
         if (text && !seen.has(text)) {
           seen.add(text);
           posts.push({ author, text, link });
@@ -161,6 +173,15 @@
     return { posts };
   }
 
+  function scroll(params) {
+    return scroll$1(params, {
+      article: S.article,
+      text:    S.postcontent,
+      author:  S.postauthor,
+      link:    S.postlink,
+    });
+  }
+
   async function search({ query, type: searchType = 'posts' }) {
     const input = await wait(S.searchbox);
     input.click();
@@ -168,7 +189,6 @@
     press(input, 'Enter');
     await sleep(2000);
 
-    // Filter tabs: Posts / People / Groups / Pages
     const tabMap = { posts: 'Posts', users: 'People', groups: 'Groups', pages: 'Pages' };
     const tabLabel = tabMap[searchType];
     if (tabLabel) {
@@ -177,7 +197,7 @@
     }
 
     const results = [];
-    document.querySelectorAll(S.article).forEach(item => {
+    document.querySelectorAll('[role="article"]').forEach(item => {
       const title = item.querySelector('span')?.innerText?.trim();
       const link  = item.querySelector('a')?.href;
       if (title && link) results.push({ title, link });
@@ -197,7 +217,6 @@
     const btn = await wait(S.followingbtn);
     btn.click();
     await sleep(600);
-    // Confirm dialog
     try {
       const confirm = await wait(S.unfollowconfirm, 2000);
       confirm.click();
@@ -229,13 +248,10 @@
     return { name, bio, followers, following, url: window.location.href };
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────────
+  /**
+   * facebook/content.js — entry point (rollup bundles this into build/browser/facebook/content.js)
+   */
 
-  function cap(str) {
-    return str.charAt(0).toUpperCase() + str.slice(1);
-  }
-
-  // ── Router ────────────────────────────────────────────────────────────────────
 
   const HANDLERS = { post, comment, react, scroll, search, follow, unfollow, message, profile };
 
@@ -247,8 +263,8 @@
     }
     handler(msg.params ?? {})
       .then(result => sendResponse({ result }))
-      .catch(err => sendResponse({ error: err.message }));
-    return true; // keep message channel open for async response
+      .catch(err  => sendResponse({ error: err.message }));
+    return true;
   });
 
 })();
