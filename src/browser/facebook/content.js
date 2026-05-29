@@ -11,8 +11,10 @@ import { follow }   from './follow.js';
 import { unfollow } from './unfollow.js';
 import { message }  from './message.js';
 import { profile }  from './profile.js';
+import { getpages } from './getpages.js';
+import { postpage } from './postpage.js';
 
-const HANDLERS = { post, comment, react, scroll, search, follow, unfollow, message, profile };
+const HANDLERS = { post, comment, react, scroll, search, follow, unfollow, message, profile, getpages, postpage };
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   const handler = HANDLERS[msg.action];

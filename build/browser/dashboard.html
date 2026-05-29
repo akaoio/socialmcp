@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Social MCP</title>
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+
+  <aside class="sidebar">
+    <div class="brand">Social MCP</div>
+    <nav class="platformnav" id="platformnav">
+      <button class="platformbtn active" data-p="facebook">Facebook</button>
+      <button class="platformbtn" data-p="x">X</button>
+      <button class="platformbtn" data-p="instagram">Instagram</button>
+      <button class="platformbtn" data-p="threads">Threads</button>
+    </nav>
+    <div class="sidebottom">
+      <button class="ghostbtn" id="secrettoggle">⚙ Secret</button>
+    </div>
+  </aside>
+
+  <main class="content">
+
+    <!-- ── Facebook panel ───────────────────────────────────────── -->
+    <div class="panel active" id="panel-facebook">
+
+      <div class="panelhead">
+        <h1>Facebook</h1>
+        <p>Manage your pages, post content with images, and automate interactions.</p>
+      </div>
+
+      <div class="twocol">
+
+        <section class="card">
+          <div class="cardhead">
+            <h2>My Pages</h2>
+            <button class="secondarybtn" id="fb-scan">Scan pages</button>
+          </div>
+          <div class="pageslist" id="fb-pages">
+            <span class="hint">Click "Scan pages" — make sure facebook.com is open in a tab.</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="cardhead"><h2>Create post</h2></div>
+
+          <label class="field">
+            Content
+            <textarea id="fb-content" placeholder="What's on your mind?" rows="5"></textarea>
+          </label>
+
+          <label class="field">
+            Image <span class="muted">(optional)</span>
+            <div class="imagedrop" id="fb-imagedrop">
+              <input type="file" id="fb-imagefile" accept="image/*" />
+              <span id="fb-imagehint">Click or drop an image here</span>
+              <img id="fb-imagepreview" hidden />
+              <button id="fb-imageclear" class="ghostbtn removebtn" hidden>✕ Remove</button>
+            </div>
+          </label>
+
+          <label class="field">
+            Post to
+            <div class="targetsbox" id="fb-targets">
+              <label class="targetitem">
+                <input type="checkbox" name="fb-target" value="__feed__" checked />
+                Personal feed
+              </label>
+            </div>
+          </label>
+
+          <div class="rowactions">
+            <button class="primarybtn" id="fb-post">Post</button>
+          </div>
+        </section>
+
+      </div>
+
+      <details class="card">
+        <summary><h2>Other actions</h2></summary>
+        <div id="fb-adv-wrap" class="advwrap"></div>
+      </details>
+
+      <section class="card">
+        <div class="cardhead"><h2>Activity</h2></div>
+        <pre class="log" id="fb-log">Ready.</pre>
+      </section>
+
+    </div><!-- /panel-facebook -->
+
+    <!-- ── Generic panels ───────────────────────────────────────── -->
+    <div class="panel" id="panel-x"></div>
+    <div class="panel" id="panel-instagram"></div>
+    <div class="panel" id="panel-threads"></div>
+
+    <!-- ── Secret overlay ───────────────────────────────────────── -->
+    <div class="overlay hidden" id="secretoverlay">
+      <div class="overlaycard">
+        <h2>Bridge Secret</h2>
+        <p>Shared secret between the MCP server and this extension. Leave blank to use the default.</p>
+        <input type="password" id="secretinput" placeholder="socialmcp-local-default" />
+        <div class="rowactions">
+          <button class="primarybtn" id="secretsave">Save</button>
+          <button class="ghostbtn" id="secretcancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="dashboard.js" type="module"></script>
+</body>
+</html>

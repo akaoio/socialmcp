@@ -54,6 +54,9 @@ async function buildserver() {
     inlineDynamicImports:  true,
   });
   await bundle.close();
+  // .wasm files are loaded at runtime relative to the bundle — must be co-located
+  fs.copyFileSync('node_modules/@akaoio/zen/pen.wasm',    'build/server/pen.wasm');
+  fs.copyFileSync('node_modules/@akaoio/zen/crypto.wasm', 'build/server/crypto.wasm');
   console.log('✓ server → build/server/index.js');
 }
 
@@ -96,10 +99,16 @@ async function buildext() {
 
   // Copy static extension assets
   fs.copyFileSync('src/browser/manifest.json', `${outdir}/manifest.json`);
-  fs.copyFileSync('src/browser/popup.html', `${outdir}/popup.html`);
-  fs.copyFileSync('src/browser/popup.css', `${outdir}/popup.css`);
-  fs.copyFileSync('src/browser/popup.js', `${outdir}/popup.js`);
-  console.log('✓ manifest + popup assets copied');
+  fs.copyFileSync('src/browser/popup.html',    `${outdir}/popup.html`);
+  fs.copyFileSync('src/browser/popup.css',     `${outdir}/popup.css`);
+  fs.copyFileSync('src/browser/popup.js',      `${outdir}/popup.js`);
+  fs.copyFileSync('src/browser/dashboard.html',`${outdir}/dashboard.html`);
+  fs.copyFileSync('src/browser/dashboard.css', `${outdir}/dashboard.css`);
+  fs.copyFileSync('src/browser/dashboard.js',  `${outdir}/dashboard.js`);
+  // .wasm files are fetched at runtime by @akaoio/zen — must be served from the extension root
+  fs.copyFileSync('node_modules/@akaoio/zen/pen.wasm',    `${outdir}/pen.wasm`);
+  fs.copyFileSync('node_modules/@akaoio/zen/crypto.wasm', `${outdir}/crypto.wasm`);
+  console.log('✓ manifest + popup + dashboard + wasm files copied');
 }
 
 // ── Runner ────────────────────────────────────────────────────────────────────

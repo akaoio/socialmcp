@@ -38,6 +38,10 @@ const S = {
   // Profile
   profilename:     'h1',
   profilebio:      '[data-overflowtooltip-content]',
+
+  // Photo/video upload inside the post composer
+  photobtn:  '[aria-label="Photo/video"], [aria-label="Photo/Video"], [aria-label*="Photo"]',
+  fileinput: 'input[type="file"][accept*="image"]',
 };
 
 export default S;

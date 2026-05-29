@@ -41,6 +41,10 @@
     // Profile
     profilename:     'h1',
     profilebio:      '[data-overflowtooltip-content]',
+
+    // Photo/video upload inside the post composer
+    photobtn:  '[aria-label="Photo/video"], [aria-label="Photo/Video"], [aria-label*="Photo"]',
+    fileinput: 'input[type="file"][accept*="image"]',
   };
 
   /**
@@ -249,11 +253,107 @@
   }
 
   /**
+   * getpages — scrape the list of Facebook Pages this account manages.
+   * Called after background.js navigates the tab to:
+   *   https://www.facebook.com/pages/?category=your_pages
+   */
+  async function getpages() {
+    // Wait for the SPA to hydrate after navigation
+    await sleep(3500);
+
+    // Strategy 1 — list items in the main region (modern pages manager)
+    let links = [...document.querySelectorAll('[role="main"] [role="listitem"] a[href]')];
+
+    // Strategy 2 — any link inside a grid/list in main that has visible text
+    if (!links.length) {
+      links = [...document.querySelectorAll('[role="main"] a[href*="facebook.com/"]')]
+        .filter(a => a.querySelector('span')?.textContent?.trim().length > 0);
+    }
+
+    // Strategy 3 — broadest fallback: any link with an img + span sibling
+    if (!links.length) {
+      links = [...document.querySelectorAll('a[href*="facebook.com/"]')]
+        .filter(a => a.querySelector('img') && a.querySelector('span'));
+    }
+
+    const seen  = new Set();
+    const pages = [];
+
+    for (const a of links) {
+      const href = (a.href || '').split('?')[0].replace(/\/$/, '');
+      if (!href || seen.has(href)) continue;
+
+      // Skip non-page URLs
+      if (/\/(help|privacy|policies|home|events|groups|marketplace|watch|gaming|notifications)/.test(href)) continue;
+      if (href === 'https://www.facebook.com') continue;
+
+      const name = (
+        a.querySelector('span[dir]')?.textContent?.trim() ||
+        a.querySelector('span')?.textContent?.trim() ||
+        a.getAttribute('aria-label')?.trim()
+      );
+      if (!name || name.length < 2) continue;
+
+      seen.add(href);
+      pages.push({ name, url: href });
+    }
+
+    return { pages };
+  }
+
+  /**
+   * postpage — post content (with optional image) to a specific Facebook Page.
+   * background.js navigates to params.page_url before this handler is called.
+   */
+  async function postpage({ content = '', image } = {}) {
+    await sleep(1500);
+
+    const trigger = await wait(S.composertrigger, 10000);
+    trigger.click();
+    await sleep(900);
+
+    const box = await wait(S.composerbox, 8000);
+    type(box, content);
+    await sleep(400);
+
+    if (image) await attachphoto(image);
+
+    const submit = await wait(S.postbtn, 5000);
+    submit.click();
+    await sleep(2000);
+
+    return { success: true };
+  }
+
+  async function attachphoto(dataurl) {
+    // Click the Photo/Video button in the composer toolbar
+    const photobtn = document.querySelector(S.photobtn);
+    if (!photobtn) throw new Error('Photo button not found — update S.photobtn selector');
+    photobtn.click();
+    await sleep(1200);
+
+    // Inject the image file into the hidden file input
+    const fileinput = document.querySelector(S.fileinput);
+    if (!fileinput) throw new Error('File input not found — update S.fileinput selector');
+
+    const res  = await fetch(dataurl);
+    const blob = await res.blob();
+    const ext  = blob.type.split('/')[1] ?? 'jpg';
+    const file = new File([blob], `upload.${ext}`, { type: blob.type });
+    const dt   = new DataTransfer();
+    dt.items.add(file);
+    fileinput.files = dt.files;
+    fileinput.dispatchEvent(new Event('change', { bubbles: true }));
+    fileinput.dispatchEvent(new Event('input',  { bubbles: true }));
+    await sleep(1500);
+  }
+
+  /**
    * facebook/content.js — entry point (rollup bundles this into build/browser/facebook/content.js)
    */
 
 
-  const HANDLERS = { post, comment, react, scroll, search, follow, unfollow, message, profile };
+  const HANDLERS = { post, comment, react, scroll, search, follow, unfollow, message, profile, getpages, postpage };
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     const handler = HANDLERS[msg.action];

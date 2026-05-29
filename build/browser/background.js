@@ -9931,7 +9931,7 @@ async function dispatch(platform, action, params) {
   const tab = await findtab(platform);
 
   // Navigate to target URL if one is specified and we're not already there
-  const target = params?.post_url ?? params?.user;
+  const target = params?.page_url ?? params?._url ?? params?.post_url ?? params?.user;
   if (target?.startsWith('http') && !tab.url.includes(new URL(target).pathname.slice(0, 20))) {
     await navigate(tab.id, target);
     // Re-fetch tab after navigation
