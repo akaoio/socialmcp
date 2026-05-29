@@ -8,12 +8,18 @@
  *
  * NOTE: MV3 service workers are terminated after ~30 s of inactivity.
  * The alarm below wakes it up periodically and reconnects if needed.
+ *
+ * Security:
+ *   Commands live in ~<pair.pub>/cmd/<id>. ZEN enforces signatures so only
+ *   the key holder can write. The shared secret is read from
+ *   chrome.storage.local key 'secret' (set it via the extension options page).
+ *   Falls back to the same built-in default as the server.
  */
 
 import ZEN from '@akaoio/zen/zen.js';
 
-const ZEN_URL = `ws://127.0.0.1:${self.SOCIALMCP_PORT ?? 8420}/zen`;
-const NS      = 'socialmcp';
+const ZEN_URL        = `ws://127.0.0.1:${self.SOCIALMCP_PORT ?? 8420}/zen`;
+const DEFAULT_SECRET = 'socialmcp-local-default';
 
 const PLATFORM_HOSTS = {
   facebook:  ['facebook.com'],
@@ -24,26 +30,43 @@ const PLATFORM_HOSTS = {
 
 let zen = null;
 
+// ── Secret ────────────────────────────────────────────────────────────────────
+
+async function getsecret() {
+  try {
+    const data = await chrome.storage.local.get(['secret']);
+    return data.secret || DEFAULT_SECRET;
+  } catch {
+    return DEFAULT_SECRET;
+  }
+}
+
 // ── ZEN peer ──────────────────────────────────────────────────────────────────
 
-function connect() {
+async function connect() {
   if (zen) return;
   zen = new ZEN({ peers: [ZEN_URL], axe: false });
 
-  zen.get(NS).get('cmd').map().on(async (raw, id) => {
+  const secret = await getsecret();
+  const seed   = await ZEN.hash(secret, null, null, { name: 'SHA-256', encode: 'base62' });
+  const pair   = await ZEN.pair(null, { seed });
+  const ns     = '~' + pair.pub;
+  const auth   = { authenticator: pair };
+
+  zen.get(ns).get('cmd').map().on(async (raw, id) => {
     if (!raw || typeof raw !== 'string') return;
     let cmd;
     try { cmd = JSON.parse(raw); } catch { return; }
     if (Date.now() - (cmd.ts || 0) > 60000) return; // ignore stale commands
 
     // Clear the command so it is not processed again
-    zen.get(NS).get('cmd').get(id).put(null);
+    zen.get(ns).get('cmd').get(id).put(null, null, auth);
 
     try {
       const result = await dispatch(cmd.platform, cmd.action, cmd.params);
-      zen.get(NS).get('res').get(id).put(JSON.stringify({ ok: result }));
+      zen.get(ns).get('res').get(id).put(JSON.stringify({ ok: result }), null, auth);
     } catch (err) {
-      zen.get(NS).get('res').get(id).put(JSON.stringify({ err: err.message }));
+      zen.get(ns).get('res').get(id).put(JSON.stringify({ err: err.message }), null, auth);
     }
   });
 }
@@ -104,7 +127,7 @@ async function dispatch(platform, action, params) {
 
 chrome.alarms.create('keepalive', { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener(alarm => {
-  if (alarm.name === 'keepalive') connect();
+  if (alarm.name === 'keepalive') connect().catch(() => { zen = null; });
 });
 
-connect();
+connect().catch(e => console.error('[socialmcp]', e));

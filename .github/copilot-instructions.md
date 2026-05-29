@@ -25,10 +25,10 @@ AI Agent (stdio/MCP)
 ## Key Conventions
 
 ### MCP Tools (`src/server/index.js`)
-- All tools accept a `platform` param: `z.enum(['facebook', 'x', 'instagram', 'threads'])`
-- `z` is imported from `./mcp.js` (local implementation — no zod dependency)
+- All tools accept a `platform` param: `schema.enum(['facebook', 'x', 'instagram', 'threads'])`
+- `schema` is imported from `./mcp.js` (local implementation — no zod dependency)
 - Always call `bridge.send(platform, action, params)` and wrap the result in `reply()`
-- New tools follow the same pattern as existing ones — define schema with `z`, call bridge, return `reply()`
+- New tools follow the same pattern as existing ones — define schema with `schema`, call bridge, return `reply()`
 
 ### Server — Zero External Runtime Dependencies
 The server uses **only Node.js built-ins** plus `@akaoio/zen` for WebSocket:
@@ -42,17 +42,23 @@ There is **no** `src/server/package.json`. All deps live in the root `package.js
 
 ### Bridge (`src/server/bridge.js`)
 - Runs a ZEN relay: `new ZEN({ web: httpServer, file: false, axe: false })`
-- `send(platform, action, params, timeout)` — writes command to `socialmcp/cmd/<id>` in the ZEN graph, waits for response on `socialmcp/res/<id>`
+- On start, derives a secp256k1 keypair from `SOCIALMCP_SECRET` via `ZEN.hash()` → `ZEN.pair(null, { seed })`
+- `send(platform, action, params, timeout)` — writes command to `~<pair.pub>/cmd/<id>` (user namespace), waits for response on `~<pair.pub>/res/<id>`
+- All `.put()` calls include `{ authenticator: pair }` — ZEN's security middleware rejects unsigned writes to `~<pub>/...` souls
 - Commands are JSON strings: `{ platform, action, params, ts }`
 - Responses are JSON strings: `{ ok: result }` or `{ err: message }`
 - Default timeout is 30 000 ms
+
+**Security model:** `~<pub>/...` is a user-signed namespace. ZEN verifies the secp256k1 signature on every write; an attacker connected to the relay cannot inject or forge without the private key.
 
 ### Browser Extension
 
 **`background.js`** — MV3 service worker:
 - Connects to the ZEN relay as a peer: `new ZEN({ peers: ["ws://127.0.0.1:8420/zen"], axe: false })`
-- Listens for commands via `zen.get('socialmcp').get('cmd').map().on(...)` — dispatches to content scripts
-- Replies via `zen.get('socialmcp').get('res').get(id).put(JSON.stringify({ ok/err }))`
+- Derives the same keypair from `chrome.storage.local` key `secret` (falls back to built-in default)
+- Listens for commands via `zen.get('~'+pair.pub).get('cmd').map().on(...)` — dispatches to content scripts
+- Replies via `zen.get('~'+pair.pub).get('res').get(id).put(JSON.stringify({ ok/err }), null, { authenticator: pair })`
+- `getsecret()` — reads `chrome.storage.local.get(['secret'])`; set it once via the extension options page
 - `findtab(platform)` — finds first matching open tab by hostname
 - `dispatch(platform, action, params)` — navigates tab if `post_url` or `user` is a full URL, then forwards to content script via `chrome.tabs.sendMessage`
 - Keep-alive via `chrome.alarms` every 0.5 minutes (MV3 limitation workaround)
@@ -69,7 +75,7 @@ There is **no** `src/server/package.json`. All deps live in the root `package.js
 1. Create `src/browser/<platform>/content.js` — copy structure from an existing platform, update selectors and handlers
 2. Add the hostname to `PLATFORM_HOSTS` in `background.js`
 3. Add a new `content_scripts` entry in `manifest.json`
-4. Add the platform to `z.enum([...])` in `src/server/index.js`
+4. Add the platform to `schema.enum([...])` in `src/server/index.js`
 5. Add the platform to `PLATFORMS` array in `build.js`
 
 ## Adding a New Tool
@@ -95,6 +101,7 @@ There is **no** `src/server/package.json`. All deps live in the root `package.js
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `SOCIALMCP_PORT` | `8420` | ZEN relay port (ws://127.0.0.1:PORT/zen) |
+| `SOCIALMCP_SECRET` | *(built-in default)* | Shared secret for keypair derivation — set a strong random value in production |
 
 ## Selector Maintenance
 
@@ -108,6 +115,6 @@ Platform UI changes frequently. When a selector breaks:
 
 No automated test suite. Manual verification order:
 
-1. **Bridge**: `node src/server/index.js` — expect `[socialmcp] zen relay on ws://127.0.0.1:8420/zen`
+1. **Bridge**: `node src/server/index.js` — expect `[socialmcp] zen relay on ws://127.0.0.1:8420/zen (pub: <pubkey>)`
 2. **Extension**: Load `src/browser/` as unpacked extension → open Service Worker DevTools → confirm ZEN peer connected
 3. **Tools**: `npx @modelcontextprotocol/inspector node src/server/index.js` → call `scroll` with a platform that has an open tab
