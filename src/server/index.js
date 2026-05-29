@@ -3,7 +3,7 @@
  * MCP server entry point.
  *
  * Transport: stdio  (add to Claude Desktop / any MCP client as a local process)
- * Bridge:    WebSocket on 127.0.0.1:SOCIALMCP_PORT (default 3456)
+ * Bridge:    ZEN relay on ws://127.0.0.1:SOCIALMCP_PORT/zen (default 8420)
  *
  * Claude Desktop config example:
  * {
@@ -16,17 +16,15 @@
  * }
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
+import { McpServer, StdioServerTransport, schema } from './mcp.js';
 import Bridge from './bridge.js';
 
 const bridge = new Bridge().start();
 const mcp = new McpServer({ name: 'socialmcp', version: '1.0.0' });
 
 // Reusable schema fragments
-const platform = z.enum(['facebook', 'x', 'instagram', 'threads']);
-const user = z.string().describe('Username or full profile URL');
+const platform = schema.enum(['facebook', 'x', 'instagram', 'threads']);
+const user = schema.string().describe('Username or full profile URL');
 
 function reply(r) {
   return { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }] };
@@ -39,8 +37,8 @@ mcp.tool(
   'Create a new post on a social media platform',
   {
     platform,
-    content: z.string().describe('Text content of the post'),
-    media: z.array(z.string()).optional()
+    content: schema.string().describe('Text content of the post'),
+    media: schema.array(schema.string()).optional()
       .describe('File paths or URLs of images/videos to attach'),
   },
   async ({ platform: p, content, media }) =>
@@ -52,8 +50,8 @@ mcp.tool(
   'Comment on a post',
   {
     platform,
-    post_url: z.string().describe('URL of the post to comment on'),
-    content: z.string(),
+    post_url: schema.string().describe('URL of the post to comment on'),
+    content: schema.string(),
   },
   async ({ platform: p, post_url, content }) =>
     reply(await bridge.send(p, 'comment', { post_url, content }))
@@ -64,8 +62,8 @@ mcp.tool(
   'Like or react to a post',
   {
     platform,
-    post_url: z.string().describe('URL of the post'),
-    reaction: z.enum(['like', 'love', 'haha', 'wow', 'sad', 'angry']).optional()
+    post_url: schema.string().describe('URL of the post'),
+    reaction: schema.enum(['like', 'love', 'haha', 'wow', 'sad', 'angry']).optional()
       .describe('Reaction type (default: like)'),
   },
   async ({ platform: p, post_url, reaction = 'like' }) =>
@@ -77,7 +75,7 @@ mcp.tool(
   'Scroll the feed and retrieve posts',
   {
     platform,
-    count: z.number().int().min(1).max(50).optional()
+    count: schema.number().int().min(1).max(50).optional()
       .describe('Number of posts to retrieve (default: 10)'),
   },
   async ({ platform: p, count = 10 }) =>
@@ -89,8 +87,8 @@ mcp.tool(
   'Search for users, posts, or groups on a platform',
   {
     platform,
-    query: z.string(),
-    type: z.enum(['posts', 'users', 'groups', 'pages']).optional()
+    query: schema.string(),
+    type: schema.enum(['posts', 'users', 'groups', 'pages']).optional()
       .describe('Category to search (default: posts)'),
   },
   async ({ platform: p, query, type = 'posts' }) =>
@@ -119,7 +117,7 @@ mcp.tool(
   {
     platform,
     user,
-    content: z.string(),
+    content: schema.string(),
   },
   async ({ platform: p, user: u, content }) =>
     reply(await bridge.send(p, 'message', { user: u, content }))
@@ -130,7 +128,7 @@ mcp.tool(
   'Get public profile information of a user',
   {
     platform,
-    user: z.string().describe('Username, full profile URL, or "me" for the current account'),
+    user: schema.string().describe('Username, full profile URL, or "me" for the current account'),
   },
   async ({ platform: p, user: u }) =>
     reply(await bridge.send(p, 'profile', { user: u }))

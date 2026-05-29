@@ -1,84 +1,68 @@
 /**
  * bridge.js
- * WebSocket server that manages connections from browser extensions.
+ * ZEN relay that bridges MCP server tools to browser extensions.
  *
  * Architecture:
  *   MCP Server (index.js)
  *       └── bridge.send(platform, action, params)
- *               └── WebSocket (ws://127.0.0.1:PORT)
- *                       └── Extension background.js
+ *               └── ZEN relay (ws://127.0.0.1:PORT/zen)
+ *                       └── Extension background.js (ZEN peer)
  *                               └── chrome.tabs.sendMessage
  *                                       └── content script (DOM)
  */
 
-import { WebSocketServer } from 'ws';
+import { createServer } from 'node:http';
+import ZEN from '@akaoio/zen/zen.js';
+import '@akaoio/zen/lib/wire.js'; // adds opt.web inbound WebSocket support
 
-const DEFAULT_PORT = parseInt(process.env.SOCIALMCP_PORT ?? '3456');
+const DEFAULT_PORT = parseInt(process.env.SOCIALMCP_PORT ?? '8420');
+const NS = 'socialmcp';
 
 export default class Bridge {
   constructor(port = DEFAULT_PORT) {
     this.port = port;
-    this.connections = new Map(); // connId -> { ws, platforms: string[] }
-    this.pending = new Map();     // msgId -> { resolve, reject, timer }
-    this.seq = 0;
+    this.seq  = 0;
+    this.zen  = null;
   }
 
   start() {
-    this.wss = new WebSocketServer({ port: this.port, host: '127.0.0.1' });
-    this.wss.on('connection', ws => this.onconnect(ws));
-    process.stderr.write(`[socialmcp] bridge on ws://127.0.0.1:${this.port}\n`);
+    const srv = createServer().listen(this.port, '127.0.0.1');
+    this.zen = new ZEN({ web: srv, file: false, axe: false });
+    process.stderr.write(`[socialmcp] zen relay on ws://127.0.0.1:${this.port}/zen\n`);
     return this;
   }
 
-  onconnect(ws) {
-    const id = ++this.seq;
-    this.connections.set(id, { ws, platforms: [] });
-
-    ws.on('message', raw => {
-      let msg;
-      try { msg = JSON.parse(raw.toString()); } catch { return; }
-
-      if (msg.type === 'register') {
-        this.connections.get(id).platforms = msg.platforms ?? [];
-        process.stderr.write(`[socialmcp] ext#${id} platforms: ${msg.platforms.join(', ')}\n`);
-        return;
-      }
-
-      if (msg.type === 'response') {
-        const p = this.pending.get(msg.id);
-        if (!p) return;
-        clearTimeout(p.timer);
-        this.pending.delete(msg.id);
-        msg.error ? p.reject(new Error(msg.error)) : p.resolve(msg.result);
-      }
-    });
-
-    ws.on('close', () => {
-      this.connections.delete(id);
-      process.stderr.write(`[socialmcp] ext#${id} disconnected\n`);
-    });
-
-    ws.on('error', () => ws.close());
-  }
-
   send(platform, action, params, timeout = 30000) {
+    const zen = this.zen;
+    const id  = String(++this.seq);
     return new Promise((resolve, reject) => {
-      let conn = null;
-      for (const c of this.connections.values()) {
-        if (c.platforms.includes(platform)) { conn = c; break; }
-      }
-      if (!conn) {
-        return reject(new Error(`No extension connected for platform: ${platform}`));
-      }
+      let done  = false;
+      const cmd = zen.get(NS).get('cmd').get(id);
+      const res = zen.get(NS).get('res').get(id);
 
-      const id = ++this.seq;
       const timer = setTimeout(() => {
-        this.pending.delete(id);
+        if (done) return;
+        done = true;
+        cmd.put(null);
         reject(new Error(`Timeout (${timeout}ms): ${platform}.${action}`));
       }, timeout);
 
-      this.pending.set(id, { resolve, reject, timer });
-      conn.ws.send(JSON.stringify({ id, platform, action, params }));
+      res.on((raw) => {
+        if (!raw || done) return;
+        done = true;
+        res.off();
+        clearTimeout(timer);
+        cmd.put(null);
+        res.put(null);
+        try {
+          const msg = JSON.parse(raw);
+          msg.err ? reject(new Error(msg.err)) : resolve(msg.ok);
+        } catch (e) {
+          reject(e);
+        }
+      });
+
+      cmd.put(JSON.stringify({ platform, action, params, ts: Date.now() }));
     });
   }
 }

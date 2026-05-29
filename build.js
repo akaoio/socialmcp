@@ -1,5 +1,5 @@
 /**
- * build.js — esbuild build script
+ * build.js — rollup + terser build script
  *
  * Usage:
  *   node build.js          # build everything
@@ -13,32 +13,47 @@
  *   build/browser/manifest.json  — copied as-is
  */
 
-import esbuild from 'esbuild';
+import { rollup } from 'rollup';
+import { nodeResolve } from '@rollup/plugin-node-resolve';
+import json from '@rollup/plugin-json';
+import terser from '@rollup/plugin-terser';
 import fs from 'fs';
-import path from 'path';
 
 const target = process.argv[2] ?? 'all';
 const prod   = process.env.NODE_ENV === 'production';
 
+const minify = prod ? [terser()] : [];
+
+// zen.js has a dynamic import("./service.js") which references a non-existent
+// ./xdg.js in the zen package root. Stub it out so rollup can bundle cleanly.
+const zenServiceStub = {
+  name: 'zen-service-stub',
+  resolveId(id, importer) {
+    if (id === './service.js' && importer && importer.replace(/\\/g, '/').includes('@akaoio/zen')) {
+      return '\0zen-service-stub';
+    }
+  },
+  load(id) {
+    if (id === '\0zen-service-stub') return 'export default function(){}';
+  },
+};
+
 // ── Server ────────────────────────────────────────────────────────────────────
 
 async function buildserver() {
-  await esbuild.build({
-    entryPoints: ['src/server/index.js'],
-    bundle:      true,
-    platform:    'node',
-    target:      'node20',
-    format:      'esm',
-    outfile:     'build/server/index.js',
-    minify:      prod,
-    sourcemap:   !prod,
-    // Keep Node built-ins and native addons external
-    packages:    'bundle',
-    external:    [],
-    banner: {
-      js: '#!/usr/bin/env node',
-    },
+  const bundle = await rollup({
+    input: 'src/server/index.js',
+    external: (id) => id.startsWith('node:'),
+    plugins: [zenServiceStub, nodeResolve(), json(), ...minify],
   });
+  await bundle.write({
+    file:                  'build/server/index.js',
+    format:                'esm',
+    banner:                '#!/usr/bin/env node',
+    sourcemap:             !prod,
+    inlineDynamicImports:  true,
+  });
+  await bundle.close();
   console.log('✓ server → build/server/index.js');
 }
 
@@ -48,44 +63,40 @@ const PLATFORMS = ['facebook', 'x', 'instagram', 'threads'];
 
 async function buildext() {
   const outdir = 'build/browser';
+  fs.mkdirSync(outdir, { recursive: true });
 
-  // Bundle background service worker
-  await esbuild.build({
-    entryPoints: ['src/browser/background.js'],
-    bundle:      true,
-    platform:    'browser',
-    target:      'chrome120',
-    format:      'esm',
-    outfile:     `${outdir}/background.js`,
-    minify:      prod,
-    sourcemap:   !prod,
+  // Bundle background service worker (nodeResolve needed for @akaoio/zen/zen.js)
+  const bg = await rollup({
+    input: 'src/browser/background.js',
+    plugins: [zenServiceStub, nodeResolve({ browser: true }), json(), ...minify],
   });
+  await bg.write({
+    file:                 `${outdir}/background.js`,
+    format:               'esm',
+    sourcemap:            !prod,
+    inlineDynamicImports: true,
+  });
+  await bg.close();
   console.log('✓ background → build/browser/background.js');
 
-  // Bundle each platform content script
-  await esbuild.build({
-    entryPoints: PLATFORMS.map(p => `src/browser/${p}/content.js`),
-    bundle:      true,
-    platform:    'browser',
-    target:      'chrome120',
-    format:      'iife', // content scripts must be IIFE, not ESM
-    outdir,
-    outbase:     'src/browser',
-    minify:      prod,
-    sourcemap:   !prod,
-  });
-  PLATFORMS.forEach(p => console.log(`✓ ${p}/content → build/browser/${p}/content.js`));
+  // Bundle each platform content script as IIFE
+  for (const p of PLATFORMS) {
+    const b = await rollup({
+      input: `src/browser/${p}/content.js`,
+      plugins: [...minify],
+    });
+    await b.write({
+      file:      `${outdir}/${p}/content.js`,
+      format:    'iife',
+      sourcemap: !prod,
+    });
+    await b.close();
+    console.log(`✓ ${p}/content → build/browser/${p}/content.js`);
+  }
 
   // Copy manifest.json
-  fs.mkdirSync(outdir, { recursive: true });
   fs.copyFileSync('src/browser/manifest.json', `${outdir}/manifest.json`);
   console.log('✓ manifest.json copied');
-
-  // Patch manifest to point sourcemap paths correctly in dev
-  if (!prod) {
-    const manifest = JSON.parse(fs.readFileSync(`${outdir}/manifest.json`, 'utf8'));
-    fs.writeFileSync(`${outdir}/manifest.json`, JSON.stringify(manifest, null, 2));
-  }
 }
 
 // ── Runner ────────────────────────────────────────────────────────────────────

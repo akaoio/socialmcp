@@ -2,7 +2,7 @@
  * background.js — Extension service worker (MV3)
  *
  * Responsibilities:
- *  1. Maintain a WebSocket connection to the MCP bridge server.
+ *  1. Connect to the MCP ZEN relay as a peer.
  *  2. Handle navigation before forwarding commands to content scripts.
  *  3. Keep the service worker alive via chrome.alarms (MV3 limitation).
  *
@@ -10,7 +10,10 @@
  * The alarm below wakes it up periodically and reconnects if needed.
  */
 
-const WS_URL = `ws://127.0.0.1:${self.SOCIALMCP_PORT ?? 3456}`;
+import ZEN from '@akaoio/zen/zen.js';
+
+const ZEN_URL = `ws://127.0.0.1:${self.SOCIALMCP_PORT ?? 8420}/zen`;
+const NS      = 'socialmcp';
 
 const PLATFORM_HOSTS = {
   facebook:  ['facebook.com'],
@@ -19,42 +22,30 @@ const PLATFORM_HOSTS = {
   threads:   ['threads.net'],
 };
 
-let socket = null;
-let backoff = 1000;
+let zen = null;
 
-// ── WebSocket ─────────────────────────────────────────────────────────────────
+// ── ZEN peer ──────────────────────────────────────────────────────────────────
 
 function connect() {
-  if (socket && socket.readyState <= WebSocket.OPEN) return;
+  if (zen) return;
+  zen = new ZEN({ peers: [ZEN_URL], axe: false });
 
-  socket = new WebSocket(WS_URL);
+  zen.get(NS).get('cmd').map().on(async (raw, id) => {
+    if (!raw || typeof raw !== 'string') return;
+    let cmd;
+    try { cmd = JSON.parse(raw); } catch { return; }
+    if (Date.now() - (cmd.ts || 0) > 60000) return; // ignore stale commands
 
-  socket.addEventListener('open', () => {
-    backoff = 1000;
-    socket.send(JSON.stringify({
-      type: 'register',
-      platforms: Object.keys(PLATFORM_HOSTS),
-    }));
-  });
-
-  socket.addEventListener('message', async event => {
-    let msg;
-    try { msg = JSON.parse(event.data); } catch { return; }
+    // Clear the command so it is not processed again
+    zen.get(NS).get('cmd').get(id).put(null);
 
     try {
-      const result = await dispatch(msg.platform, msg.action, msg.params);
-      socket.send(JSON.stringify({ type: 'response', id: msg.id, result }));
+      const result = await dispatch(cmd.platform, cmd.action, cmd.params);
+      zen.get(NS).get('res').get(id).put(JSON.stringify({ ok: result }));
     } catch (err) {
-      socket.send(JSON.stringify({ type: 'response', id: msg.id, error: err.message }));
+      zen.get(NS).get('res').get(id).put(JSON.stringify({ err: err.message }));
     }
   });
-
-  socket.addEventListener('close', () => {
-    setTimeout(connect, backoff);
-    backoff = Math.min(backoff * 2, 30000);
-  });
-
-  socket.addEventListener('error', () => socket.close());
 }
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────

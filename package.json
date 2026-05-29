@@ -4,12 +4,18 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build":       "node build.js",
+    "start": "node build/server/index.js",
+    "build": "node build.js",
     "build:server": "node build.js server",
-    "build:ext":   "node build.js ext",
-    "start":       "node build/server/index.js"
+    "build:ext": "node build.js ext"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "@rollup/plugin-json": "^6.0.0",
+    "@rollup/plugin-node-resolve": "^15.3.1",
+    "@rollup/plugin-terser": "^0.4.4",
+    "rollup": "^4.60.4"
+  },
+  "dependencies": {
+    "@akaoio/zen": "^1.0.32"
   }
 }

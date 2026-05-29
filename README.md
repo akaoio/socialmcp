@@ -63,7 +63,7 @@ src/
   server/
     index.js               # MCP server (stdio transport)
     bridge.js              # WebSocket server quản lý kết nối từ extension
-    package.json
+    mcp.js                 # MCP JSON-RPC + schema builder (thay thế @modelcontextprotocol/sdk + zod)
 build/                     # Bản build minified
 ```
 
@@ -71,15 +71,15 @@ build/                     # Bản build minified
 
 ### Phát triển (không cần build)
 ```bash
-# Chạy server thẳng từ source
-cd src/server && npm install && node index.js
+# Chạy server thẳng từ source (không cần npm install riêng cho server)
+node src/server/index.js
 
 # Load extension từ src/browser/ (Chrome → Load unpacked)
 ```
 
 ### Build production
 ```bash
-npm install          # cài esbuild
+npm install          # cài rollup + plugins (devDeps) và @akaoio/zen (runtime)
 npm run build        # build cả server lẫn extension
 
 npm run build:server # chỉ bundle server
@@ -87,7 +87,7 @@ npm run build:ext    # chỉ bundle extension
 ```
 
 Output:
-- `build/server/index.js` — Node bundle, chạy bằng `npm start`
+- `build/server/index.js` — Node bundle (zero external deps, self-contained), chạy bằng `npm start`
 - `build/browser/` — Extension đã minify, đóng gói thành `.crx` từ thư mục này
 
 ### Đóng gói Extension (.crx)
@@ -102,7 +102,7 @@ Output:
   "mcpServers": {
     "socialmcp": {
       "command": "node",
-      "args": ["/đường/dẫn/đến/build/server/index.js"]
+      "args": ["/đường/dẫn/đến/src/server/index.js"]
     }
   }
 }
