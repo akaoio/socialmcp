@@ -1,0 +1,15 @@
+{
+  "name": "socialmcp",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build":       "node build.js",
+    "build:server": "node build.js server",
+    "build:ext":   "node build.js ext",
+    "start":       "node build/server/index.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

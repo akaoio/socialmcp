@@ -1,0 +1,15 @@
+{
+  "name": "socialmcp",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "MCP server bridge for Social MCP",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.0"
+  }
+}
