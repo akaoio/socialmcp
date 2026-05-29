@@ -1,5 +1,5 @@
 /**
- * x/content.js — entry point (rollup bundles this into build/browser/x/content.js)
+ * x/content.js ï¿½ entry point (rollup bundles this into build/browser/x/content.js)
  */
 
 import { post }     from './post.js';
