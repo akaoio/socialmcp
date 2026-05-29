@@ -141,3 +141,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Local dev cache for Playwright MCP login/session bootstrap
+.cache/playwright-mcp/
+resources/playwright-mcp/
