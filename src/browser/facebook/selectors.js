@@ -6,9 +6,7 @@
 
 const S = {
   // Feed composer
-  composertrigger: '[aria-label="Create a post"]',
   composerbox:     '[contenteditable="true"][role="textbox"]',
-  postbtn:         '[aria-label="Post"][type="submit"]',
 
   // Feed articles
   article:         '[role="article"]',
@@ -39,9 +37,12 @@ const S = {
   profilename:     'h1',
   profilebio:      '[data-overflowtooltip-content]',
 
-  // Photo/video upload inside the post composer
-  photobtn:  '[aria-label="Photo/video"], [aria-label="Photo/Video"], [aria-label*="Photo"]',
-  fileinput: 'input[type="file"][accept*="image"]',
+  // Post composer (inside compose dialog)
+  photobtn:        '[aria-label="Photo/video"]',
+  fileinput:       'input[type="file"][accept*="video/mp4"]',
+  nextbtn:         '[aria-label="Next"]',
+  postbtn:         '[aria-label="Post"]',
+  whatsappdismiss: '[aria-label="Not now"]',
 };
 
 export default S;

@@ -82,13 +82,13 @@ async function findtab(platform) {
   return tab;
 }
 
-async function navigate(tabId, url) {
+async function navigate(tabId, url, extraWait = 800) {
   return new Promise(resolve => {
     const listener = (id, info) => {
       if (id === tabId && info.status === 'complete') {
         chrome.tabs.onUpdated.removeListener(listener);
         // Extra wait for SPA JavaScript to initialize
-        setTimeout(resolve, 800);
+        setTimeout(resolve, extraWait);
       }
     };
     chrome.tabs.onUpdated.addListener(listener);
@@ -110,6 +110,15 @@ async function sendmessage(tabId, msg) {
 
 async function dispatch(platform, action, params) {
   const tab = await findtab(platform);
+
+  // postpage: navigate to pages list → switchpage (identity switch) → page URL → postpage
+  if (platform === 'facebook' && action === 'postpage' && params?.page_url?.startsWith('http')) {
+    await navigate(tab.id, 'https://www.facebook.com/pages/?category=your_pages', 3500);
+    await sendmessage(tab.id, { action: 'switchpage', params: { page_url: params.page_url } });
+    await navigate(tab.id, params.page_url, 2500);
+    const updated = await chrome.tabs.get(tab.id);
+    return sendmessage(updated.id, { action, params });
+  }
 
   // Navigate to target URL if one is specified and we're not already there
   const target = params?.page_url ?? params?._url ?? params?.post_url ?? params?.user;

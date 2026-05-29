@@ -270,7 +270,11 @@ async function fbpost() {
       if (target === '__feed__') {
         await dispatch('facebook', 'post', params);
       } else {
-        await dispatch('facebook', 'postpage', { page_url: target, ...params });
+        // Two-step navigation in background.js:
+        //   1. Visits admin URL (latest/home?asset_id=) → sets page identity in session
+        //   2. Visits page handle URL → composer is available without Switch Now banner
+        const page = fbpages.find(p => p.url === target);
+        await dispatch('facebook', 'postpage', { page_url: target, page_id: page?.id, ...params });
       }
       fblog(`✓ Posted to ${name}`);
     } catch (e) {

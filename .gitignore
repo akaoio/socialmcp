@@ -141,3 +141,22 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# ── Sensitive / local-only ──────────────────────────────────────────────────
+
+# Playwright persistent Chrome profile — contains browser cookies & sessions
+scripts/.chrome-profile/
+
+# Debug screenshots (may capture personal/account data)
+scripts/*.png
+scripts/*.jpg
+
+# Debug output files
+scripts/debug-*.json
+scripts/debug-*.txt
+
+# .env files — put SOCIALMCP_SECRET here, never commit real values
+# Copy .env.example → .env and fill in your secret
+.env
+.env.local
+.env.*.local
