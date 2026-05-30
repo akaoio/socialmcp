@@ -52,12 +52,12 @@
           </label>
 
           <label class="field">
-            Image <span class="muted">(optional)</span>
+            Images <span class="muted">(optional)</span>
             <div class="imagedrop" id="fb-imagedrop">
-              <input type="file" id="fb-imagefile" accept="image/*" />
-              <span id="fb-imagehint">Click or drop an image here</span>
-              <img id="fb-imagepreview" hidden />
-              <button id="fb-imageclear" class="ghostbtn removebtn" hidden>✕ Remove</button>
+              <input type="file" id="fb-imagefile" accept="image/*,video/*" multiple />
+              <span id="fb-imagehint">Click or drop images here</span>
+              <div id="fb-imagepreviews" class="imagethumbrow" hidden></div>
+              <button id="fb-imageclear" class="ghostbtn removebtn" hidden>✕ Remove all</button>
             </div>
           </label>
 

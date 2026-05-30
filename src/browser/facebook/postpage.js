@@ -1,6 +1,22 @@
 import S from './selectors.js';
 import { sleep } from '../common/utils.js';
 
+async function setfiles(fileinput, urls) {
+  const dt = new DataTransfer();
+  for (const url of urls) {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const ext = blob.type.split('/')[1] ?? 'jpg';
+    dt.items.add(new File([blob], `upload.${ext}`, { type: blob.type }));
+  }
+  fileinput.multiple = true;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files')?.set;
+  if (setter) setter.call(fileinput, dt.files);
+  else fileinput.files = dt.files;
+  fileinput.dispatchEvent(new Event('change', { bubbles: true }));
+  fileinput.dispatchEvent(new InputEvent('input', { bubbles: true }));
+}
+
 // Find the compose dialog: [role="dialog"] containing contenteditable
 function finddialog() {
   return [...document.querySelectorAll('[role="dialog"]')].find(d => d.querySelector('[contenteditable="true"]')) ?? null;
@@ -54,8 +70,9 @@ export async function switchpage({ page_url } = {}) {
   return { switched: false, reason: 'already active' };
 }
 
-// postpage — post content (with optional image) to a Facebook Page.
-export async function postpage({ content = '', image } = {}) {
+// postpage — post to a Facebook Page (with optional media array).
+export async function postpage({ content = '', media = [], image } = {}) {
+  const files = media?.length ? media : (image ? [image] : []);
   await sleep(2000);
   dismisswa();
 
@@ -64,12 +81,29 @@ export async function postpage({ content = '', image } = {}) {
   await sleep(1500);
   dismisswa();
 
-  // Wait for compose dialog
   let dlg = null;
   for (let i = 0; i < 20; i++) { dlg = finddialog(); if (dlg) break; await sleep(400); }
   if (!dlg) throw new Error('Compose dialog did not open');
 
-  // Type content first
+  // Attach media FIRST — typing after avoids text loss when Facebook switches to album mode
+  if (files.length) {
+    const photobtn = [...dlg.querySelectorAll('[role="button"]')].find(b => b.getAttribute('aria-label') === 'Photo/video');
+    if (photobtn) { photobtn.click(); await sleep(1500); }
+
+    const fileinput = (
+      [...dlg.querySelectorAll(S.fileinput)].pop() ??
+      [...document.querySelectorAll(S.fileinput)].pop()
+    );
+    if (!fileinput) throw new Error('File input not found');
+    await setfiles(fileinput, files);
+    await sleep(4000);
+
+    dlg = null;
+    for (let i = 0; i < 15; i++) { dlg = finddialog(); if (dlg) break; await sleep(400); }
+    if (!dlg) throw new Error('Dialog lost after media attach');
+    dismisswa();
+  }
+
   const box = dlg.querySelector('[contenteditable="true"]');
   if (!box) throw new Error('Compose textbox not found');
   box.focus();
@@ -83,11 +117,7 @@ export async function postpage({ content = '', image } = {}) {
   await sleep(600);
   dismisswa();
 
-  // Attach photo after typing
-  if (image) await attachphoto(image);
-  dismisswa();
-
-  // Wait for Next to be enabled — re-query every iteration, click immediately (no stale refs)
+  // Wait for Next to be enabled
   let nexted = false;
   for (let i = 0; i < 40; i++) {
     dismisswa();
@@ -104,7 +134,7 @@ export async function postpage({ content = '', image } = {}) {
   await sleep(2000);
   dismisswa();
 
-  // Find Post button (in Post Settings dialog that appears after Next)
+  // Find Post button (in Post Settings dialog after Next)
   let postbtn = null;
   for (let i = 0; i < 25; i++) {
     dismisswa();
@@ -123,43 +153,5 @@ export async function postpage({ content = '', image } = {}) {
   dismisswa();
 
   return { success: true };
-}
-
-async function attachphoto(dataurl) {
-  // Click Photo/video in the dialog to open the upload area
-  const dlg = finddialog();
-  if (!dlg) throw new Error('Dialog not found for photo attach');
-  const photobtn = [...dlg.querySelectorAll('[role="button"]')].find(b => b.getAttribute('aria-label') === 'Photo/video');
-  if (photobtn) { photobtn.click(); await sleep(1500); }
-
-  // Prefer file input scoped inside the dialog; fall back to document-wide
-  const fileinput = (
-    [...dlg.querySelectorAll('input[type="file"]')].find(i => i.accept.includes('video/mp4')) ??
-    [...document.querySelectorAll('input[type="file"]')].find(i => i.accept.includes('video/mp4'))
-  );
-  if (!fileinput) throw new Error('File input not found');
-
-  const res  = await fetch(dataurl);
-  const blob = await res.blob();
-  const ext  = blob.type.split('/')[1] ?? 'jpg';
-  const file = new File([blob], `upload.${ext}`, { type: blob.type });
-  const dt   = new DataTransfer();
-  dt.items.add(file);
-
-  // Use native setter so React's synthetic event system picks up the change
-  const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files')?.set;
-  if (nativeSetter) nativeSetter.call(fileinput, dt.files);
-  else fileinput.files = dt.files;
-
-  fileinput.dispatchEvent(new Event('change', { bubbles: true }));
-  fileinput.dispatchEvent(new InputEvent('input', { bubbles: true }));
-
-  // Wait until Facebook acknowledges the file (Remove Post Attachment button appears)
-  for (let i = 0; i < 25; i++) {
-    dismisswa();
-    const d = finddialog();
-    if (d?.querySelector('[aria-label="Remove Post Attachment"]')) break;
-    await sleep(400);
-  }
 }
 

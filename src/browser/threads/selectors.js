@@ -1,6 +1,7 @@
 const S = {
   newpostbtn:   '[aria-label="Create"]',
   composerbox:  'div[contenteditable="true"][role="textbox"]',
+  mediainput:   'input[type="file"]',
   postbtn:      'div[role="button"]:has-text("Post")',
 
   article:      'article',

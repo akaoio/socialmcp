@@ -7,7 +7,7 @@
 // ── Action / field metadata ───────────────────────────────────────────────
 
 const ACTIONS = [
-  { value: 'post',     label: 'Post',       fields: ['content'] },
+  { value: 'post',     label: 'Post',       fields: ['content', 'media'] },
   { value: 'comment',  label: 'Comment',    fields: ['post_url', 'content'] },
   { value: 'react',    label: 'React',      fields: ['post_url', 'reaction'] },
   { value: 'scroll',   label: 'Scroll',     fields: ['count'] },
@@ -26,6 +26,7 @@ const FIELD_META = {
   type:     { label: 'Type',         tag: 'select',   options: ['posts', 'users', 'groups', 'pages'] },
   reaction: { label: 'Reaction',     tag: 'select',   options: ['like', 'love', 'haha', 'wow', 'sad', 'angry'] },
   count:    { label: 'Count',        tag: 'input',    type: 'number', placeholder: '10', min: 1, max: 50, default: '10' },
+  media:    { label: 'Images / Video', tag: 'input',   type: 'file',   accept: 'image/*,video/*', multiple: true },
 };
 
 const PLATFORMS = {
@@ -36,12 +37,21 @@ const PLATFORMS = {
 
 // ── State ─────────────────────────────────────────────────────────────────
 
-let fbpages      = [];
-let imageDataUrl = null;
+let fbpages       = [];
+let imageDataUrls = [];
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 const el = id => document.getElementById(id);
+
+function filetourl(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
 
 function fblog(msg) {
   const area = el('fb-log');
@@ -104,7 +114,7 @@ function buildgenericpanel(platform) {
 
   el(`${platform}-run`).addEventListener('click', async () => {
     const action = sel.value;
-    const params = collectfields(platform, action);
+    const params = await collectfields(platform, sel.value);
     const logarea = el(`${platform}-log`);
     logarea.textContent = 'Running…';
     try {
@@ -132,6 +142,9 @@ function buildfield(prefix, name) {
     const opts = m.options.map(o => `<option value="${o}">${o}</option>`).join('');
     return `<label class="field">${m.label}<select id="${id}">${opts}</select></label>`;
   }
+  if (m.type === 'file') {
+    return `<label class="field">${m.label}<input id="${id}" type="file" accept="${m.accept ?? '*'}"${m.multiple ? ' multiple' : ''}></label>`;
+  }
   return `<label class="field">${m.label}<input id="${id}" type="${m.type ?? 'text'}"
     placeholder="${m.placeholder ?? ''}"
     ${m.min !== undefined ? `min="${m.min}"` : ''}
@@ -139,12 +152,16 @@ function buildfield(prefix, name) {
     ${m.default !== undefined ? `value="${m.default}"` : ''}></label>`;
 }
 
-function collectfields(prefix, action) {
+async function collectfields(prefix, action) {
   const fields = ACTIONS.find(a => a.value === action)?.fields ?? [];
   const params = {};
   for (const f of fields) {
     const inp = el(`${prefix}-f-${f}`);
     if (!inp) continue;
+    if (f === 'media') {
+      if (inp.files?.length) params.media = await Promise.all([...inp.files].map(filetourl));
+      continue;
+    }
     const v = inp.value.trim();
     if (v === '' && f !== 'count') continue;
     params[f] = f === 'count' ? Number(v || 10) : v;
@@ -206,36 +223,33 @@ async function scanpages() {
 // ── Facebook: image picker ────────────────────────────────────────────────
 
 function setupimagepicker() {
-  const input   = el('fb-imagefile');
-  const preview = el('fb-imagepreview');
-  const hint    = el('fb-imagehint');
-  const clear   = el('fb-imageclear');
-  const drop    = el('fb-imagedrop');
+  const input    = el('fb-imagefile');
+  const previews = el('fb-imagepreviews');
+  const hint     = el('fb-imagehint');
+  const clear    = el('fb-imageclear');
+  const drop     = el('fb-imagedrop');
 
-  function loadfile(file) {
-    if (!file || !file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-      imageDataUrl     = e.target.result;
-      preview.src      = imageDataUrl;
-      preview.hidden   = false;
-      hint.hidden      = true;
-      clear.hidden     = false;
-    };
-    reader.readAsDataURL(file);
+  async function loadfiles(files) {
+    const valid = [...files].filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
+    if (!valid.length) return;
+    imageDataUrls = await Promise.all(valid.map(filetourl));
+    previews.innerHTML = imageDataUrls.map(url => `<img class="imagethumb" src="${url}" />`).join('');
+    previews.hidden = false;
+    hint.hidden     = true;
+    clear.hidden    = false;
   }
 
-  input.addEventListener('change', () => loadfile(input.files[0]));
+  input.addEventListener('change', () => loadfiles(input.files));
 
   clear.addEventListener('click', ev => {
     ev.preventDefault();
     ev.stopPropagation();
-    imageDataUrl   = null;
-    input.value    = '';
-    preview.hidden = true;
-    hint.hidden    = false;
-    clear.hidden   = true;
-    preview.src    = '';
+    imageDataUrls      = [];
+    input.value        = '';
+    previews.innerHTML = '';
+    previews.hidden    = true;
+    hint.hidden        = false;
+    clear.hidden       = true;
   });
 
   drop.addEventListener('dragover', ev => { ev.preventDefault(); drop.classList.add('drag'); });
@@ -243,7 +257,7 @@ function setupimagepicker() {
   drop.addEventListener('drop', ev => {
     ev.preventDefault();
     drop.classList.remove('drag');
-    loadfile(ev.dataTransfer.files[0]);
+    loadfiles(ev.dataTransfer.files);
   });
 }
 
@@ -253,7 +267,7 @@ async function fbpost() {
   const content = el('fb-content').value.trim();
   const targets = [...document.querySelectorAll('input[name="fb-target"]:checked')].map(c => c.value);
 
-  if (!content && !imageDataUrl) { fblog('Nothing to post — add content or an image.'); return; }
+  if (!content && !imageDataUrls.length) { fblog('Nothing to post — add content or an image.'); return; }
   if (!targets.length)           { fblog('No target selected.'); return; }
 
   const btn = el('fb-post');
@@ -264,8 +278,8 @@ async function fbpost() {
     fblog(`Posting to ${name}…`);
     try {
       const params = {};
-      if (content)      params.content = content;
-      if (imageDataUrl) params.image   = imageDataUrl;
+      if (content)             params.content = content;
+      if (imageDataUrls.length) params.media  = imageDataUrls;
 
       if (target === '__feed__') {
         await dispatch('facebook', 'post', params);
@@ -314,7 +328,7 @@ function buildfbadv() {
 
   el(`${prefix}-run`).addEventListener('click', async () => {
     const action = sel.value;
-    const params = collectfields(prefix, action);
+    const params = await collectfields(prefix, action);
     fblog(`Running ${action}…`);
     try {
       const result = await dispatch('facebook', action, params);
