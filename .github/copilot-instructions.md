@@ -98,7 +98,7 @@ src/browser/platform/<id>/
 ### `src/browser/common/`
 Reusable utilities for both background and content scripts (content scripts re-import as bundled IIFE — keep dependency-free vanilla JS):
 
-`sleep.js`, `wait.js`, `type.js`, `press.js`, `filetourl.js`.
+`sleep.js`, `filetourl.js`. Add new shared utils here only when at least one importer exists.
 
 ## Selector discipline
 

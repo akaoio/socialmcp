@@ -87,7 +87,7 @@ src/
   browser/
     manifest.json
     plugins.js                       # plugin registry
-    common/                          # tiện ích chung: sleep, wait, type, press, filetourl
+    common/                          # tiện ích chung dùng lại nhiều nơi: sleep, filetourl
     background/                      # service-worker host (platform-agnostic)
       index.js, onmessage.js, opendashboard.js
       dispatch.js, findtab.js, navigate.js, sendmessage.js
