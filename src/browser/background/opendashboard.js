@@ -1,11 +1,10 @@
-// Popup is a minimal launcher — open the dashboard as a full tab.
-(async () => {
-  const url = chrome.runtime.getURL('dashboard.html');
+export async function opendashboard() {
+  const url = chrome.runtime.getURL('dashboard/index.html');
   const [existing] = await chrome.tabs.query({ url });
   if (existing) {
     chrome.tabs.update(existing.id, { active: true });
+    chrome.windows.update(existing.windowId, { focused: true });
   } else {
     chrome.tabs.create({ url });
   }
-})();
-
+}

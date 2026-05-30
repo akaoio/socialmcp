@@ -4,15 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Social MCP</title>
-  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="index.css" />
 </head>
 <body>
 
   <aside class="sidebar">
     <div class="brand">Social MCP</div>
-    <div class="sidebottom">
-      <button class="ghostbtn" id="secrettoggle">⚙ Secret</button>
-    </div>
   </aside>
 
   <main class="content">
@@ -56,12 +53,7 @@
 
           <label class="field">
             Post to
-            <div class="targetsbox" id="fb-targets">
-              <label class="targetitem">
-                <input type="checkbox" name="fb-target" value="__feed__" checked />
-                Personal feed
-              </label>
-            </div>
+            <div class="targetsbox" id="fb-targets"></div>
           </label>
 
           <div class="rowactions">
@@ -78,22 +70,8 @@
 
     </div><!-- /panel-facebook -->
 
-
-    <!-- ── Secret overlay ───────────────────────────────────────── -->
-    <div class="overlay hidden" id="secretoverlay">
-      <div class="overlaycard">
-        <h2>Bridge Secret</h2>
-        <p>Shared secret between the MCP server and this extension. Leave blank to use the default.</p>
-        <input type="password" id="secretinput" placeholder="socialmcp-local-default" />
-        <div class="rowactions">
-          <button class="primarybtn" id="secretsave">Save</button>
-          <button class="ghostbtn" id="secretcancel">Cancel</button>
-        </div>
-      </div>
-    </div>
-
   </main>
 
-  <script src="dashboard.js" type="module"></script>
+  <script src="index.js"></script>
 </body>
 </html>

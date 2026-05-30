@@ -67,25 +67,27 @@ const PLATFORMS = ['facebook'];
 async function buildext() {
   const outdir = 'build/browser';
   fs.mkdirSync(outdir, { recursive: true });
+  fs.mkdirSync(`${outdir}/dashboard`, { recursive: true });
 
-  // Bundle background service worker (nodeResolve needed for @akaoio/zen/zen.js)
+  // Bundle background service worker
+  fs.mkdirSync(`${outdir}/background`, { recursive: true });
   const bg = await rollup({
-    input: 'src/browser/background.js',
+    input: 'src/browser/background/index.js',
     plugins: [zenServiceStub, nodeResolve({ browser: true }), json(), ...minify],
   });
   await bg.write({
-    file:                 `${outdir}/background.js`,
+    file:                 `${outdir}/background/index.js`,
     format:               'esm',
     sourcemap:            !prod,
     inlineDynamicImports: true,
   });
   await bg.close();
-  console.log('✓ background → build/browser/background.js');
+  console.log('✓ background → build/browser/background/index.js');
 
   // Bundle each platform content script as IIFE
   for (const p of PLATFORMS) {
     const b = await rollup({
-      input: `src/browser/${p}/content.js`,
+      input: `src/browser/platform/${p}/content.js`,
       plugins: [...minify],
     });
     await b.write({
@@ -97,18 +99,27 @@ async function buildext() {
     console.log(`✓ ${p}/content → build/browser/${p}/content.js`);
   }
 
+  // Bundle dashboard
+  const dash = await rollup({
+    input: 'src/browser/dashboard/index.js',
+    plugins: [...minify],
+  });
+  await dash.write({
+    file:      `${outdir}/dashboard/index.js`,
+    format:    'iife',
+    sourcemap: !prod,
+  });
+  await dash.close();
+  console.log('✓ dashboard → build/browser/dashboard/index.js');
+
   // Copy static extension assets
-  fs.copyFileSync('src/browser/manifest.json', `${outdir}/manifest.json`);
-  fs.copyFileSync('src/browser/popup.html',    `${outdir}/popup.html`);
-  fs.copyFileSync('src/browser/popup.css',     `${outdir}/popup.css`);
-  fs.copyFileSync('src/browser/popup.js',      `${outdir}/popup.js`);
-  fs.copyFileSync('src/browser/dashboard.html',`${outdir}/dashboard.html`);
-  fs.copyFileSync('src/browser/dashboard.css', `${outdir}/dashboard.css`);
-  fs.copyFileSync('src/browser/dashboard.js',  `${outdir}/dashboard.js`);
+  fs.copyFileSync('src/browser/manifest.json',         `${outdir}/manifest.json`);
+  fs.copyFileSync('src/browser/dashboard/index.html',  `${outdir}/dashboard/index.html`);
+  fs.copyFileSync('src/browser/dashboard/index.css',   `${outdir}/dashboard/index.css`);
   // .wasm files are fetched at runtime by @akaoio/zen — must be served from the extension root
   fs.copyFileSync('node_modules/@akaoio/zen/pen.wasm',    `${outdir}/pen.wasm`);
   fs.copyFileSync('node_modules/@akaoio/zen/crypto.wasm', `${outdir}/crypto.wasm`);
-  console.log('✓ manifest + popup + dashboard + wasm files copied');
+  console.log('✓ manifest + dashboard + wasm files copied');
 }
 
 // ── Runner ────────────────────────────────────────────────────────────────────
