@@ -1,5 +1,5 @@
 /**
- * build.js — rollup + terser build script
+ * build.js — esbuild script
  *
  * Usage:
  *   node build.js          # build everything
@@ -7,38 +7,37 @@
  *   node build.js ext      # bundle browser extension only
  *
  * Outputs:
- *   build/server/index.js        — single-file Node bundle
- *   build/browser/background.js  — bundled service worker
- *   build/browser/<p>/content.js — bundled content scripts
- *   build/browser/manifest.json  — copied as-is
+ *   build/server/index.js             — single-file Node bundle
+ *   build/browser/background/index.js — bundled service worker (ESM)
+ *   build/browser/<p>/content.js      — bundled content scripts (IIFE)
+ *   build/browser/dashboard/index.js  — bundled dashboard (IIFE)
+ *   build/browser/manifest.json       — generated from src + plugin hosts.js
  */
 
-import { rollup } from 'rollup';
-import { nodeResolve } from '@rollup/plugin-node-resolve';
-import json from '@rollup/plugin-json';
-import terser from '@rollup/plugin-terser';
+import * as esbuild from 'esbuild';
 import fs from 'fs';
 
 const target = process.argv[2] ?? 'all';
 const prod   = process.env.NODE_ENV === 'production';
 
-const minify = prod ? [terser()] : [];
+const common = {
+  bundle:    true,
+  minify:    prod,
+  sourcemap: !prod,
+  logLevel:  'info',
+};
 
 // ── Server ────────────────────────────────────────────────────────────────────
 
 async function buildserver() {
-  const bundle = await rollup({
-    input: 'src/server/index.js',
-    external: (id) => id.startsWith('node:'),
-    plugins: [nodeResolve(), json(), ...minify],
+  await esbuild.build({
+    ...common,
+    entryPoints: ['src/server/index.js'],
+    outfile:     'build/server/index.js',
+    format:      'esm',
+    platform:    'node',
+    banner:      { js: '#!/usr/bin/env node' },
   });
-  await bundle.write({
-    file:      'build/server/index.js',
-    format:    'esm',
-    banner:    '#!/usr/bin/env node',
-    sourcemap: !prod,
-  });
-  await bundle.close();
   console.log('✓ server → build/server/index.js');
 }
 
@@ -58,53 +57,42 @@ async function buildext() {
   const PLATFORMS = discoverplatforms();
   const outdir = 'build/browser';
   fs.mkdirSync(outdir, { recursive: true });
-  fs.mkdirSync(`${outdir}/dashboard`, { recursive: true });
 
-  // Bundle background service worker
-  fs.mkdirSync(`${outdir}/background`, { recursive: true });
-  const bg = await rollup({
-    input: 'src/browser/background/index.js',
-    plugins: [nodeResolve({ browser: true }), json(), ...minify],
+  // Background service worker (ESM, browser platform)
+  await esbuild.build({
+    ...common,
+    entryPoints: ['src/browser/background/index.js'],
+    outfile:     `${outdir}/background/index.js`,
+    format:      'esm',
+    platform:    'browser',
   });
-  await bg.write({
-    file:      `${outdir}/background/index.js`,
-    format:    'esm',
-    sourcemap: !prod,
-  });
-  await bg.close();
   console.log('✓ background → build/browser/background/index.js');
 
-  // Bundle each platform content script as IIFE
+  // Per-platform content scripts (IIFE)
   for (const p of PLATFORMS) {
-    const b = await rollup({
-      input: `src/browser/platform/${p}/content.js`,
-      plugins: [...minify],
+    await esbuild.build({
+      ...common,
+      entryPoints: [`src/browser/platform/${p}/content.js`],
+      outfile:     `${outdir}/${p}/content.js`,
+      format:      'iife',
+      platform:    'browser',
     });
-    await b.write({
-      file:      `${outdir}/${p}/content.js`,
-      format:    'iife',
-      sourcemap: !prod,
-    });
-    await b.close();
     console.log(`✓ ${p}/content → build/browser/${p}/content.js`);
   }
 
-  // Bundle dashboard
-  const dash = await rollup({
-    input: 'src/browser/dashboard/index.js',
-    plugins: [...minify],
+  // Dashboard (IIFE)
+  await esbuild.build({
+    ...common,
+    entryPoints: ['src/browser/dashboard/index.js'],
+    outfile:     `${outdir}/dashboard/index.js`,
+    format:      'iife',
+    platform:    'browser',
   });
-  await dash.write({
-    file:      `${outdir}/dashboard/index.js`,
-    format:    'iife',
-    sourcemap: !prod,
-  });
-  await dash.close();
   console.log('✓ dashboard → build/browser/dashboard/index.js');
 
   // Generate manifest.json with platform-derived content_scripts + host_permissions.
-  // Read each plugin's hosts.js (must export `export const hosts = [...]`) by simple regex —
-  // we cannot import them (they may transitively load chrome.* APIs).
+  // Read each plugin's hosts.js by simple regex — we cannot import them
+  // (they may transitively load chrome.* APIs).
   const baseManifest = JSON.parse(fs.readFileSync('src/browser/manifest.json', 'utf8'));
   const platformhosts = Object.fromEntries(PLATFORMS.map(p => {
     const src   = fs.readFileSync(`src/browser/platform/${p}/hosts.js`, 'utf8');
@@ -119,8 +107,8 @@ async function buildext() {
   }));
   baseManifest.host_permissions = PLATFORMS.flatMap(p => platformhosts[p].map(h => `https://*.${h}/*`));
   fs.writeFileSync(`${outdir}/manifest.json`, JSON.stringify(baseManifest, null, 2));
-  fs.copyFileSync('src/browser/dashboard/index.html',  `${outdir}/dashboard/index.html`);
-  fs.copyFileSync('src/browser/dashboard/index.css',   `${outdir}/dashboard/index.css`);
+  fs.copyFileSync('src/browser/dashboard/index.html', `${outdir}/dashboard/index.html`);
+  fs.copyFileSync('src/browser/dashboard/index.css',  `${outdir}/dashboard/index.css`);
 
   // Copy plugin CSS files (each platform may declare its own panel.css)
   fs.cpSync('src/browser/platform', `${outdir}/platform`, {

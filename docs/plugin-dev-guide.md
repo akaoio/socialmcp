@@ -254,7 +254,7 @@ If the tool is brand new:
 | `npm run build:ext` | bundles extension into `build/browser/`; auto-discovers plugins; auto-generates `manifest.json` `content_scripts` + `host_permissions` |
 | `npm run build:server` | bundles MCP server into `build/server/index.js` |
 | `npm run build` | both |
-| `NODE_ENV=production node build.js` | enables terser minification |
+| `NODE_ENV=production node build.js` | enables esbuild minification |
 
 Dev cycle:
 1. Edit source.

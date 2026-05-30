@@ -10,9 +10,6 @@
     "build:ext": "node build.js ext"
   },
   "devDependencies": {
-    "@rollup/plugin-json": "^6.0.0",
-    "@rollup/plugin-node-resolve": "^15.3.1",
-    "@rollup/plugin-terser": "^0.4.4",
-    "rollup": "^4.60.4"
+    "esbuild": "^0.28.0"
   }
 }

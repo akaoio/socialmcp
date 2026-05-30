@@ -152,8 +152,8 @@ The platform string in MCP must already be in `schema.enum([...])` in `src/serve
 
 ## Build system — `build.js`
 
-- **rollup** + `@rollup/plugin-node-resolve` + `@rollup/plugin-json` + `@rollup/plugin-terser`.
-- `npm run build:server` → `build/server/index.js` (ESM, only `node:*` external).
+- **esbuild** (single devDependency).
+- `npm run build:server` → `build/server/index.js` (ESM, `platform: 'node'`).
 - `npm run build:ext` → `build/browser/`:
   - **auto-discovers** platforms by scanning `src/browser/platform/*/plugin.js`.
   - `background/index.js` — ESM bundle.
@@ -161,7 +161,7 @@ The platform string in MCP must already be in `schema.enum([...])` in `src/serve
   - `dashboard/index.js` — IIFE bundle.
   - `manifest.json` — **regenerated** from `src/browser/manifest.json` + each plugin's `hosts.js` (auto-fills `content_scripts` + `host_permissions`).
   - `dashboard/index.{html,css}` + plugin CSS files (recursively copied from `src/browser/platform/**/*.css`).
-- `NODE_ENV=production node build.js` enables terser minification.
+- `NODE_ENV=production node build.js` enables minification (disables sourcemaps).
 
 ## Environment variables
 
