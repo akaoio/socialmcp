@@ -20,7 +20,7 @@ export async function post() {
       if (content)             params.content = content;
       if (state.media.length)  params.media   = state.media;
       const page = state.pages.find(p => p.url === target);
-      await dispatch('facebook', 'postpage', { page_url: target, page_id: page?.id, ...params });
+      await dispatch('facebook', 'post', { page_url: target, page_id: page?.id, ...params });
       log(`Done: ${name}`);
     } catch (e) {
       log(`Error ${name}: ${e.message}`);

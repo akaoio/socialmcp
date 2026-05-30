@@ -39,6 +39,8 @@ Dashboard (`src/browser/dashboard/`) là một trang riêng của extension, dù
 
 `src/browser/{background,dashboard,common}/` hoàn toàn không biết về platform nào cụ thể. Mọi code platform-specific nằm trong `src/browser/platform/<id>/`.
 
+Để phát triển plugin hoặc thêm tính năng cho plugin, xem **[docs/plugin-dev-guide.md](docs/plugin-dev-guide.md)** — tài liệu quy định bắt buộc về kiến trúc, naming, folder layout, và drift checklist.
+
 Cấu trúc một plugin:
 
 ```
@@ -154,10 +156,14 @@ Output:
 
 ## Thêm một platform mới
 
+Xem chi tiết trong [docs/plugin-dev-guide.md](docs/plugin-dev-guide.md). Tóm tắt:
+
 1. Tạo `src/browser/platform/<id>/` theo cấu trúc giống `facebook/`.
 2. Thêm vào `src/browser/plugins.js`.
-3. Thêm entry `content_scripts` vào `src/browser/manifest.json` khớp với `hosts`.
-4. Thêm `<id>` vào mảng `PLATFORMS` trong `build.js`.
-5. (Optional) bổ sung `host_permissions` trong manifest.
+3. Thêm entry `content_scripts` + `host_permissions` vào `src/browser/manifest.json` (cho dev mode — prod build tự generate từ `hosts.js`).
+
+`build.js` tự động scan thư mục `src/browser/platform/*/plugin.js` — không cần sửa build script.
 
 Các id `x`, `instagram`, `threads` đã được khai báo sẵn trong schema MCP — chỉ cần thêm plugin tương ứng là dùng được.
+
+> ⚠️ **Lưu ý:** background service worker chưa mở ZEN peer, nên luồng MCP server → extension hiện chưa hoạt động. Dashboard là cách duy nhất để invoke actions hiện nay. Xem phần "MCP-server-to-extension ZEN bridge" trong plugin dev guide.

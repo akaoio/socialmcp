@@ -37,6 +37,8 @@ The dashboard (`src/browser/dashboard/`) is a separate extension page used for m
 
 `src/browser/{background,dashboard,common}/` are **platform-agnostic**. They must contain ZERO references to `facebook`, `x`, etc. All platform-specific code lives under `src/browser/platform/<id>/`.
 
+For any plugin/feature work, **follow [docs/plugin-dev-guide.md](../docs/plugin-dev-guide.md)** — it is the binding contract.
+
 ### Plugin registry — `src/browser/plugins.js`
 
 ```js
@@ -54,10 +56,12 @@ Each plugin exports a default object:
   label: 'Facebook',         // human label for dashboard sidebar
   hosts: ['facebook.com'],   // URL substrings used by background findtab()
   css:   'platform/facebook/dashboard/panel.css',  // optional, injected into dashboard
-  background: { postpage: dispatch },  // optional per-action override for tab routing
-  dashboard:  { mount },               // mount(container) — renders the plugin's UI panel
+  background: { post, scan },        // PUBLIC action names → (tab, params) => result
+  dashboard:  { mount },             // mount(container) — renders the plugin's UI panel
 }
 ```
+
+**Keys in `plugin.background` are the public action names** — they must match what `bridge.send(platform, action, params)` passes (i.e. MCP tool names + dashboard-facing aliases). Internal action names used between background and content script (`postpage`, `switchpage`, `getpages`) are private to the plugin.
 
 ### Plugin folder layout
 
@@ -67,7 +71,7 @@ src/browser/platform/<id>/
   hosts.js                      ← export const hosts = [...]
   content.js                    ← content-script entry; HANDLERS map + chrome.runtime.onMessage
   background/
-    dispatch.js                 ← optional per-action handler (tab, params) => result
+    <action>.js                 ← ONE FILE PER PUBLIC ACTION (post.js, scan.js, …)
   dashboard/
     mount.js                    ← mount(container): injects panel.js html, wires events
     panel.js                    ← export const html = `...`
@@ -82,12 +86,14 @@ src/browser/platform/<id>/
 ## Browser core (platform-agnostic)
 
 ### `src/browser/background/`
-- `index.js` — service-worker entry; opens ZEN peer; listens to `~<pub>/cmd/*`.
-- `onmessage.js` — parses command, calls `dispatch`, writes JSON response to `~<pub>/res/<id>`.
-- `dispatch.js` — looks up plugin in registry; if `plugin.background[action]` exists calls it with `(tab, params)`; otherwise falls back to generic `findtab → navigate? → sendmessage` flow.
+- `index.js` — service-worker entry; wires `chrome.action.onClicked` + `chrome.runtime.onMessage`.
+- `onmessage.js` — receives `{ type: 'ui:dispatch', platform, action, params }` from the dashboard, calls `dispatch`, replies via `sendResponse`.
+- `dispatch.js` — looks up plugin in registry; if `plugin.background[action]` exists calls it with `(tab, params)`; otherwise falls back to generic `findtab → sendmessage` (no navigation, no platform-specific magic).
 - `findtab.js` — `findtab(hosts)` returns first `chrome.tabs` whose URL includes any host string.
-- `navigate.js`, `sendmessage.js` — generic Chrome tab helpers.
+- `navigate.js`, `sendmessage.js` — generic Chrome tab helpers (imported by plugin background handlers as needed).
 - `opendashboard.js` — opens the dashboard page.
+
+> ⚠️ **Known gap:** the background service worker does not yet open a ZEN peer, so the MCP-server-to-extension path is not functional. The dashboard is currently the only way to invoke plugin actions. See "The MCP-server-to-extension ZEN bridge" in [docs/plugin-dev-guide.md](../docs/plugin-dev-guide.md) for the planned implementation.
 
 ### `src/browser/dashboard/`
 - `index.html` — generic shell: sidebar + content container, no platform markup.
@@ -139,11 +145,13 @@ To add a tool:
 
 ## Adding a new platform
 
-1. `src/browser/platform/<id>/` — copy facebook's structure: `plugin.js`, `hosts.js`, `content.js`, `dashboard/`, feature folders.
+Follow [docs/plugin-dev-guide.md](../docs/plugin-dev-guide.md). Summary:
+
+1. `src/browser/platform/<id>/` — copy facebook's structure: `plugin.js`, `hosts.js`, `content.js`, `background/<action>.js`, `dashboard/`, feature folders.
 2. Add to `src/browser/plugins.js`.
-3. Add a `content_scripts` entry in `src/browser/manifest.json` matching `hosts`.
-4. Add `<id>` to `PLATFORMS` array in `build.js`.
-5. (Optional) extend `host_permissions` in `manifest.json`.
+3. Add a `content_scripts` entry + `host_permissions` to `src/browser/manifest.json` (for dev mode); the production build auto-generates these from `hosts.js`.
+
+`build.js` auto-discovers any `src/browser/platform/<id>/plugin.js` — you do NOT need to edit it.
 
 The platform string in MCP must already be in `schema.enum([...])` in `src/server/index.js` — `facebook | x | instagram | threads` are pre-registered.
 
@@ -152,10 +160,12 @@ The platform string in MCP must already be in `schema.enum([...])` in `src/serve
 - **rollup** + `@rollup/plugin-node-resolve` + `@rollup/plugin-json` + `@rollup/plugin-terser`.
 - `npm run build:server` → `build/server/index.js` (ESM, only `node:*` external; ZEN bundled).
 - `npm run build:ext` → `build/browser/`:
+  - **auto-discovers** platforms by scanning `src/browser/platform/*/plugin.js`.
   - `background/index.js` — ESM bundle.
   - `<platform>/content.js` — IIFE bundle from `src/browser/platform/<id>/content.js`.
   - `dashboard/index.js` — IIFE bundle.
-  - `manifest.json`, `dashboard/index.{html,css}`, plugin CSS files (recursively copied from `src/browser/platform/**/*.css`), wasm files (`pen.wasm`, `crypto.wasm` from `@akaoio/zen`).
+  - `manifest.json` — **regenerated** from `src/browser/manifest.json` + each plugin's `hosts.js` (auto-fills `content_scripts` + `host_permissions`).
+  - `dashboard/index.{html,css}`, plugin CSS files (recursively copied from `src/browser/platform/**/*.css`), wasm files (`pen.wasm`, `crypto.wasm` from `@akaoio/zen`).
 - `NODE_ENV=production node build.js` enables terser minification.
 - `zenServiceStub` rollup plugin stubs the broken `import("./service.js")` in ZEN and sets `inlineDynamicImports: true`.
 

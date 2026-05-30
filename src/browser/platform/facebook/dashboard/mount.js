@@ -12,7 +12,7 @@ export async function mount(container) {
   document.getElementById('fb-post').addEventListener('click', post);
   setupimagepicker();
 
-  const { fb_pages = [] } = await chrome.storage.local.get(['fb_pages']);
-  state.pages = fb_pages;
+  const stored = await chrome.storage.local.get(['facebook:pages']);
+  state.pages = stored['facebook:pages'] ?? [];
   if (state.pages.length) renderpages(state.pages);
 }

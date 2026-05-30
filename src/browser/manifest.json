@@ -21,7 +21,7 @@
   "host_permissions": [
     "ws://127.0.0.1/*",
     "http://127.0.0.1/*",
-    "https://www.facebook.com/*"
+    "https://*.facebook.com/*"
   ],
 
   "background": {
@@ -31,7 +31,7 @@
 
   "content_scripts": [
     {
-      "matches": ["https://www.facebook.com/*"],
+      "matches": ["https://*.facebook.com/*"],
       "js": ["facebook/content.js"],
       "run_at": "document_idle"
     }

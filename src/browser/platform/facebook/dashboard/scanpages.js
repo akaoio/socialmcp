@@ -9,12 +9,10 @@ export async function scanpages() {
   btn.textContent = 'Scanning...';
   log('Scanning Facebook pages...');
   try {
-    const result = await dispatch('facebook', 'getpages', {
-      _url: 'https://www.facebook.com/pages/?category=your_pages',
-    });
+    const result = await dispatch('facebook', 'scan', {});
     state.pages = result?.pages ?? [];
     renderpages(state.pages);
-    await chrome.storage.local.set({ fb_pages: state.pages });
+    await chrome.storage.local.set({ 'facebook:pages': state.pages });
     log(`Found ${state.pages.length} page(s).`);
   } catch (e) {
     log('Error: ' + e.message);

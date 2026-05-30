@@ -62,9 +62,18 @@ async function buildserver() {
 
 // ── Browser Extension ─────────────────────────────────────────────────────────
 
-const PLATFORMS = ['facebook'];
+// Auto-derive the platform list by scanning src/browser/platform/*/plugin.js.
+// Single source of truth — adding a platform means creating a folder, nothing else here.
+function discoverplatforms() {
+  const dir = 'src/browser/platform';
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter(e => e.isDirectory() && fs.existsSync(`${dir}/${e.name}/plugin.js`))
+    .map(e => e.name);
+}
 
 async function buildext() {
+  const PLATFORMS = discoverplatforms();
   const outdir = 'build/browser';
   fs.mkdirSync(outdir, { recursive: true });
   fs.mkdirSync(`${outdir}/dashboard`, { recursive: true });
@@ -112,8 +121,27 @@ async function buildext() {
   await dash.close();
   console.log('✓ dashboard → build/browser/dashboard/index.js');
 
-  // Copy static extension assets
-  fs.copyFileSync('src/browser/manifest.json',         `${outdir}/manifest.json`);
+  // Generate manifest.json with platform-derived content_scripts + host_permissions.
+  // Read each plugin's hosts.js (must export `export const hosts = [...]`) by simple regex —
+  // we cannot import them (they may transitively load chrome.* APIs).
+  const baseManifest = JSON.parse(fs.readFileSync('src/browser/manifest.json', 'utf8'));
+  const platformhosts = Object.fromEntries(PLATFORMS.map(p => {
+    const src   = fs.readFileSync(`src/browser/platform/${p}/hosts.js`, 'utf8');
+    const match = src.match(/export\s+const\s+hosts\s*=\s*(\[[^\]]*\])/);
+    if (!match) throw new Error(`platform/${p}/hosts.js must export const hosts = [...]`);
+    return [p, JSON.parse(match[1].replace(/'/g, '"'))];
+  }));
+  baseManifest.content_scripts = PLATFORMS.map(p => ({
+    matches: platformhosts[p].map(h => `https://*.${h}/*`),
+    js:      [`${p}/content.js`],
+    run_at:  'document_idle',
+  }));
+  baseManifest.host_permissions = [
+    'ws://127.0.0.1/*',
+    'http://127.0.0.1/*',
+    ...PLATFORMS.flatMap(p => platformhosts[p].map(h => `https://*.${h}/*`)),
+  ];
+  fs.writeFileSync(`${outdir}/manifest.json`, JSON.stringify(baseManifest, null, 2));
   fs.copyFileSync('src/browser/dashboard/index.html',  `${outdir}/dashboard/index.html`);
   fs.copyFileSync('src/browser/dashboard/index.css',   `${outdir}/dashboard/index.css`);
 

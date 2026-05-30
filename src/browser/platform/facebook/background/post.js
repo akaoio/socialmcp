@@ -1,7 +1,10 @@
 import { navigate }    from '../../../background/navigate.js';
 import { sendmessage } from '../../../background/sendmessage.js';
 
-export async function dispatch(tab, params) {
+// Public MCP action: post a new post to a specific Facebook page.
+// Required param: page_url (full https URL of the page wall).
+// Optional: content (string), media (string[] of object URLs).
+export async function post(tab, params) {
   if (!params?.page_url?.startsWith('http')) {
     return sendmessage(tab.id, { action: 'postpage', params });
   }
