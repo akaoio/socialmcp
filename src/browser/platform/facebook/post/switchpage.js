@@ -1,4 +1,4 @@
-import { sleep } from '../../common/sleep.js';
+import { sleep } from '../../../common/sleep.js';
 
 export async function switchpage({ page_url } = {}) {
   await sleep(2000);

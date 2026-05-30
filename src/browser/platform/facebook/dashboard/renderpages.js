@@ -1,7 +1,5 @@
-import { el } from './el.js';
-
 export function renderpages(pages) {
-  const list = el('fb-pages');
+  const list = document.getElementById('fb-pages');
   if (!pages.length) {
     list.innerHTML = '<span class="hint">No pages found. Make sure facebook.com is open in a tab.</span>';
     return;
@@ -13,7 +11,7 @@ export function renderpages(pages) {
     </label>
   `).join('');
 
-  el('fb-targets').innerHTML = pages.map(p => `
+  document.getElementById('fb-targets').innerHTML = pages.map(p => `
     <label class="targetitem">
       <input type="checkbox" name="fb-target" value="${p.url}" checked />
       ${p.name}

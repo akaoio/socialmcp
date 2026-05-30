@@ -116,10 +116,17 @@ async function buildext() {
   fs.copyFileSync('src/browser/manifest.json',         `${outdir}/manifest.json`);
   fs.copyFileSync('src/browser/dashboard/index.html',  `${outdir}/dashboard/index.html`);
   fs.copyFileSync('src/browser/dashboard/index.css',   `${outdir}/dashboard/index.css`);
+
+  // Copy plugin CSS files (each platform may declare its own panel.css)
+  fs.cpSync('src/browser/platform', `${outdir}/platform`, {
+    recursive: true,
+    filter: src => fs.statSync(src).isDirectory() || src.endsWith('.css'),
+  });
+
   // .wasm files are fetched at runtime by @akaoio/zen — must be served from the extension root
   fs.copyFileSync('node_modules/@akaoio/zen/pen.wasm',    `${outdir}/pen.wasm`);
   fs.copyFileSync('node_modules/@akaoio/zen/crypto.wasm', `${outdir}/crypto.wasm`);
-  console.log('✓ manifest + dashboard + wasm files copied');
+  console.log('✓ manifest + dashboard + plugin css + wasm files copied');
 }
 
 // ── Runner ────────────────────────────────────────────────────────────────────

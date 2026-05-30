@@ -1,4 +1,4 @@
-import { sleep } from '../../common/sleep.js';
+import { sleep } from '../../../common/sleep.js';
 
 export async function findtrigger(timeout = 12000) {
   const deadline = Date.now() + timeout;

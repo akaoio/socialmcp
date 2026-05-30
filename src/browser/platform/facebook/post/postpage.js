@@ -1,5 +1,5 @@
-import S              from '../selectors.js';
-import { sleep }      from '../../common/sleep.js';
+import { selectors }  from './selectors.js';
+import { sleep }      from '../../../common/sleep.js';
 import { setfiles }   from './setfiles.js';
 import { finddialog } from './finddialog.js';
 import { dismisswa }  from './dismisswa.js';
@@ -25,8 +25,8 @@ export async function postpage({ content = '', media = [], image } = {}) {
     if (photobtn) { photobtn.click(); await sleep(1500); }
 
     const fileinput = (
-      [...dlg.querySelectorAll(S.fileinput)].pop() ??
-      [...document.querySelectorAll(S.fileinput)].pop()
+      [...dlg.querySelectorAll(selectors.fileinput)].pop() ??
+      [...document.querySelectorAll(selectors.fileinput)].pop()
     );
     if (!fileinput) throw new Error('File input not found');
     await setfiles(fileinput, files);

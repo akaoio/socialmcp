@@ -1,4 +1,4 @@
-import { sleep }  from '../../common/sleep.js';
+import { sleep }  from '../../../common/sleep.js';
 import { filter } from './filter.js';
 
 export async function getpages() {
