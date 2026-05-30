@@ -1,39 +1,202 @@
 /**
- * dashboard.js — Social MCP full-page dashboard
+ * dashboard.js — Social MCP dashboard
  * Runs as a Chrome extension page (chrome-extension://…/dashboard.html)
  * Communicates with content scripts via background.js ui:dispatch messages.
  */
 
-// ── Action / field metadata ───────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────
 
-const ACTIONS = [
-  { value: 'post',     label: 'Post',       fields: ['content', 'media'] },
-  { value: 'comment',  label: 'Comment',    fields: ['post_url', 'content'] },
-  { value: 'react',    label: 'React',      fields: ['post_url', 'reaction'] },
-  { value: 'scroll',   label: 'Scroll',     fields: ['count'] },
-  { value: 'search',   label: 'Search',     fields: ['query', 'type'] },
-  { value: 'follow',   label: 'Follow',     fields: ['user'] },
-  { value: 'unfollow', label: 'Unfollow',   fields: ['user'] },
-  { value: 'message',  label: 'Message',    fields: ['user', 'content'] },
-  { value: 'profile',  label: 'Profile',    fields: ['user'] },
-];
+let fbpages       = [];
+let imageDataUrls = [];
 
-const FIELD_META = {
-  content:  { label: 'Content',      tag: 'textarea', placeholder: 'Write content...' },
-  post_url: { label: 'Post URL',     tag: 'input',    placeholder: 'https://...' },
-  user:     { label: 'User / URL',   tag: 'input',    placeholder: 'username or https://...' },
-  query:    { label: 'Search query', tag: 'input',    placeholder: 'keywords...' },
-  type:     { label: 'Type',         tag: 'select',   options: ['posts', 'users', 'groups', 'pages'] },
-  reaction: { label: 'Reaction',     tag: 'select',   options: ['like', 'love', 'haha', 'wow', 'sad', 'angry'] },
-  count:    { label: 'Count',        tag: 'input',    type: 'number', placeholder: '10', min: 1, max: 50, default: '10' },
-  media:    { label: 'Images / Video', tag: 'input',   type: 'file',   accept: 'image/*,video/*', multiple: true },
-};
+// ── Helpers ───────────────────────────────────────────────────────────────
 
-const PLATFORMS = {
-  x:         { label: 'X',         note: 'Fast public stream and DMs.' },
-  instagram: { label: 'Instagram', note: 'Profile-heavy visual timeline.' },
-  threads:   { label: 'Threads',   note: 'Conversation-first timeline.' },
-};
+const el = id => document.getElementById(id);
+
+function filetourl(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+function fblog(msg) {
+  const area = el('fb-log');
+  const stamp = new Date().toLocaleTimeString();
+  area.textContent += `[${stamp}] ${msg}\n`;
+  area.scrollTop = area.scrollHeight;
+}
+
+// ── Dispatch ──────────────────────────────────────────────────────────────
+
+async function dispatch(platform, action, params) {
+  const resp = await chrome.runtime.sendMessage({ type: 'ui:dispatch', platform, action, params });
+  if (resp?.error) throw new Error(resp.error);
+  return resp?.result;
+}
+
+// ── Pages list ────────────────────────────────────────────────────────────
+
+function renderpages(pages) {
+  const list = el('fb-pages');
+  if (!pages.length) {
+    list.innerHTML = '<span class="hint">No pages found. Make sure facebook.com is open in a tab.</span>';
+    return;
+  }
+  list.innerHTML = pages.map(p => `
+    <label class="pageitem">
+      <input type="checkbox" name="fb-page" value="${p.url}" checked />
+      <span class="pagename" title="${p.url}">${p.name}</span>
+    </label>
+  `).join('');
+
+  const targets = el('fb-targets');
+  targets.innerHTML = `
+    <label class="targetitem">
+      <input type="checkbox" name="fb-target" value="__feed__" />
+      Personal feed
+    </label>
+    ${pages.map(p => `
+    <label class="targetitem">
+      <input type="checkbox" name="fb-target" value="${p.url}" checked />
+      ${p.name}
+    </label>`).join('')}
+  `;
+}
+
+async function scanpages() {
+  const btn = el('fb-scan');
+  btn.disabled = true;
+  btn.textContent = 'Scanning…';
+  fblog('Scanning Facebook pages…');
+  try {
+    const result = await dispatch('facebook', 'getpages', {
+      _url: 'https://www.facebook.com/pages/?category=your_pages',
+    });
+    fbpages = result?.pages ?? [];
+    renderpages(fbpages);
+    await chrome.storage.local.set({ fb_pages: fbpages });
+    fblog(`Found ${fbpages.length} page(s).`);
+  } catch (e) {
+    fblog('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Scan pages';
+  }
+}
+
+// ── Image picker ──────────────────────────────────────────────────────────
+
+function setupimagepicker() {
+  const input    = el('fb-imagefile');
+  const previews = el('fb-imagepreviews');
+  const hint     = el('fb-imagehint');
+  const clear    = el('fb-imageclear');
+  const drop     = el('fb-imagedrop');
+
+  async function loadfiles(files) {
+    const valid = [...files].filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
+    if (!valid.length) return;
+    imageDataUrls = await Promise.all(valid.map(filetourl));
+    previews.innerHTML = imageDataUrls.map(url => `<img class="imagethumb" src="${url}" />`).join('');
+    previews.hidden = false;
+    hint.hidden     = true;
+    clear.hidden    = false;
+  }
+
+  input.addEventListener('change', () => loadfiles(input.files));
+
+  clear.addEventListener('click', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    imageDataUrls      = [];
+    input.value        = '';
+    previews.innerHTML = '';
+    previews.hidden    = true;
+    hint.hidden        = false;
+    clear.hidden       = true;
+  });
+
+  drop.addEventListener('dragover', ev => { ev.preventDefault(); drop.classList.add('drag'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('drag'));
+  drop.addEventListener('drop', ev => {
+    ev.preventDefault();
+    drop.classList.remove('drag');
+    loadfiles(ev.dataTransfer.files);
+  });
+}
+
+// ── Post ──────────────────────────────────────────────────────────────────
+
+async function fbpost() {
+  const content = el('fb-content').value.trim();
+  const targets = [...document.querySelectorAll('input[name="fb-target"]:checked')].map(c => c.value);
+
+  if (!content && !imageDataUrls.length) { fblog('Nothing to post — add content or images.'); return; }
+  if (!targets.length) { fblog('No target selected.'); return; }
+
+  const btn = el('fb-post');
+  btn.disabled = true;
+
+  for (const target of targets) {
+    const name = target === '__feed__' ? 'personal feed' : (fbpages.find(p => p.url === target)?.name ?? target);
+    fblog(`Posting to ${name}…`);
+    try {
+      const params = {};
+      if (content)              params.content = content;
+      if (imageDataUrls.length) params.media   = imageDataUrls;
+
+      if (target === '__feed__') {
+        await dispatch('facebook', 'post', params);
+      } else {
+        const page = fbpages.find(p => p.url === target);
+        await dispatch('facebook', 'postpage', { page_url: target, page_id: page?.id, ...params });
+      }
+      fblog(`✓ Posted to ${name}`);
+    } catch (e) {
+      fblog(`✗ ${name}: ${e.message}`);
+    }
+  }
+
+  btn.disabled = false;
+}
+
+// ── Secret overlay ────────────────────────────────────────────────────────
+
+function setupsecret() {
+  el('secrettoggle').addEventListener('click', () => el('secretoverlay').classList.toggle('hidden'));
+  el('secretcancel').addEventListener('click', () => el('secretoverlay').classList.add('hidden'));
+  el('secretsave').addEventListener('click', async () => {
+    await chrome.storage.local.set({ secret: el('secretinput').value.trim() });
+    el('secretoverlay').classList.add('hidden');
+    fblog('Secret saved.');
+  });
+}
+
+async function loadsecret() {
+  const { secret = '' } = await chrome.storage.local.get(['secret']);
+  el('secretinput').value = secret;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+
+async function init() {
+  el('fb-scan').addEventListener('click', scanpages);
+  el('fb-post').addEventListener('click', fbpost);
+  setupimagepicker();
+
+  const { fb_pages = [] } = await chrome.storage.local.get(['fb_pages']);
+  fbpages = fb_pages;
+  if (fbpages.length) renderpages(fbpages);
+
+  setupsecret();
+  await loadsecret();
+}
+
+init().catch(e => console.error('[dashboard]', e));
+
 
 // ── State ─────────────────────────────────────────────────────────────────
 

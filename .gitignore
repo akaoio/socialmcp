@@ -146,6 +146,7 @@ vite.config.ts.timestamp-*
 
 # Playwright persistent Chrome profile — contains browser cookies & sessions
 scripts/.chrome-profile/
+.playwright-profile
 
 # Debug screenshots (may capture personal/account data)
 scripts/*.png
@@ -160,3 +161,5 @@ scripts/debug-*.txt
 .env
 .env.local
 .env.*.local
+
+build/

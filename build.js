@@ -62,7 +62,7 @@ async function buildserver() {
 
 // ── Browser Extension ─────────────────────────────────────────────────────────
 
-const PLATFORMS = ['facebook', 'x', 'instagram', 'threads'];
+const PLATFORMS = ['facebook'];
 
 async function buildext() {
   const outdir = 'build/browser';

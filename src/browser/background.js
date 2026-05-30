@@ -1,75 +1,11 @@
 /**
  * background.js — Extension service worker (MV3)
- *
- * Responsibilities:
- *  1. Connect to the MCP ZEN relay as a peer.
- *  2. Handle navigation before forwarding commands to content scripts.
- *  3. Keep the service worker alive via chrome.alarms (MV3 limitation).
- *
- * NOTE: MV3 service workers are terminated after ~30 s of inactivity.
- * The alarm below wakes it up periodically and reconnects if needed.
- *
- * Security:
- *   Commands live in ~<pair.pub>/cmd/<id>. ZEN enforces signatures so only
- *   the key holder can write. The shared secret is read from
- *   chrome.storage.local key 'secret' (set it via the extension options page).
- *   Falls back to the same built-in default as the server.
+ * Handles navigation and forwards commands from the dashboard to content scripts.
  */
 
-import ZEN from '@akaoio/zen/zen.js';
-
-const ZEN_URL        = `ws://127.0.0.1:${self.SOCIALMCP_PORT ?? 8420}/zen`;
-const DEFAULT_SECRET = 'socialmcp-local-default';
-
 const PLATFORM_HOSTS = {
-  facebook:  ['facebook.com'],
-  x:         ['x.com'],
-  instagram: ['instagram.com'],
-  threads:   ['threads.net'],
+  facebook: ['facebook.com'],
 };
-
-let zen = null;
-
-// ── Secret ────────────────────────────────────────────────────────────────────
-
-async function getsecret() {
-  try {
-    const data = await chrome.storage.local.get(['secret']);
-    return data.secret || DEFAULT_SECRET;
-  } catch {
-    return DEFAULT_SECRET;
-  }
-}
-
-// ── ZEN peer ──────────────────────────────────────────────────────────────────
-
-async function connect() {
-  if (zen) return;
-  zen = new ZEN({ peers: [ZEN_URL], axe: false });
-
-  const secret = await getsecret();
-  const seed   = await ZEN.hash(secret, null, null, { name: 'SHA-256', encode: 'base62' });
-  const pair   = await ZEN.pair(null, { seed });
-  const ns     = '~' + pair.pub;
-  const auth   = { authenticator: pair };
-
-  zen.get(ns).get('cmd').map().on(async (raw, id) => {
-    if (!raw || typeof raw !== 'string') return;
-    let cmd;
-    try { cmd = JSON.parse(raw); } catch { return; }
-    if (Date.now() - (cmd.ts || 0) > 60000) return; // ignore stale commands
-
-    // Clear the command so it is not processed again
-    zen.get(ns).get('cmd').get(id).put(null, null, auth);
-
-    try {
-      const result = await dispatch(cmd.platform, cmd.action, cmd.params);
-      zen.get(ns).get('res').get(id).put(JSON.stringify({ ok: result }), null, auth);
-    } catch (err) {
-      zen.get(ns).get('res').get(id).put(JSON.stringify({ err: err.message }), null, auth);
-    }
-  });
-}
 
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 
@@ -87,7 +23,6 @@ async function navigate(tabId, url, extraWait = 800) {
     const listener = (id, info) => {
       if (id === tabId && info.status === 'complete') {
         chrome.tabs.onUpdated.removeListener(listener);
-        // Extra wait for SPA JavaScript to initialize
         setTimeout(resolve, extraWait);
       }
     };
@@ -120,11 +55,10 @@ async function dispatch(platform, action, params) {
     return sendmessage(updated.id, { action, params });
   }
 
-  // Navigate to target URL if one is specified and we're not already there
+  // Navigate to target URL if specified and not already there
   const target = params?.page_url ?? params?._url ?? params?.post_url ?? params?.user;
   if (target?.startsWith('http') && !tab.url.includes(new URL(target).pathname.slice(0, 20))) {
     await navigate(tab.id, target);
-    // Re-fetch tab after navigation
     const updated = await chrome.tabs.get(tab.id);
     return sendmessage(updated.id, { action, params });
   }
@@ -132,14 +66,7 @@ async function dispatch(platform, action, params) {
   return sendmessage(tab.id, { action, params });
 }
 
-// ── Keep-alive ────────────────────────────────────────────────────────────────
-
-chrome.alarms.create('keepalive', { periodInMinutes: 0.5 });
-chrome.alarms.onAlarm.addListener(alarm => {
-  if (alarm.name === 'keepalive') connect().catch(() => { zen = null; });
-});
-
-connect().catch(e => console.error('[socialmcp]', e));
+// ── Message handler ───────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type !== 'ui:dispatch') return false;

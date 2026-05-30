@@ -6,7 +6,6 @@
 
   "permissions": [
     "tabs",
-    "alarms",
     "scripting",
     "storage"
   ],
@@ -23,10 +22,7 @@
   "host_permissions": [
     "ws://127.0.0.1/*",
     "http://127.0.0.1/*",
-    "https://www.facebook.com/*",
-    "https://x.com/*",
-    "https://www.instagram.com/*",
-    "https://www.threads.net/*"
+    "https://www.facebook.com/*"
   ],
 
   "background": {
@@ -38,21 +34,6 @@
     {
       "matches": ["https://www.facebook.com/*"],
       "js": ["facebook/content.js"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": ["https://x.com/*"],
-      "js": ["x/content.js"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": ["https://www.instagram.com/*"],
-      "js": ["instagram/content.js"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": ["https://www.threads.net/*"],
-      "js": ["threads/content.js"],
       "run_at": "document_idle"
     }
   ]
