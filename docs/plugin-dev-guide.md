@@ -236,18 +236,16 @@ If the tool is brand new:
 2. The tool's handler calls `bridge.send(platform, '<name>', params)`.
 3. Each plugin that wants to support it adds `plugin.background.<name>`.
 
-## The MCP-server-to-extension ZEN bridge
+## The MCP-server-to-extension transport
 
-> ⚠️ **As of this writing, the background service worker does not yet open a ZEN peer.**
-> The architecture diagrams in `README.md` describe the eventual flow:
-> `MCP server → ZEN relay → background ZEN peer → content script`. The relay (`src/server/bridge.js`) is in place, but `src/browser/background/index.js` only listens to `chrome.runtime.onMessage` from the dashboard. This means the AI-agent path is not yet functional; only the dashboard can drive actions.
+> ⚠️ **No transport between the MCP server and the extension exists yet.**
+> `src/server/bridge.js` is a placeholder — every `bridge.send(...)` throws `socialmcp: no transport between MCP server and extension yet`. The AI-agent path is therefore non-functional today; the dashboard is the only way to drive plugin actions.
 >
-> To wire it up, the background entry needs to:
-> 1. `import ZEN from '@akaoio/zen/zen.js'` and create a peer pointed at `ws://127.0.0.1:8420/zen`.
-> 2. Derive the same secp256k1 pair from `chrome.storage.local.secret` (matching `SOCIALMCP_SECRET`).
-> 3. Subscribe to `~<pair.pub>/cmd` and, for each new entry, call `dispatch(platform, action, params)` (the same generic dispatcher the dashboard uses) and write the JSON result back to `~<pair.pub>/res/<id>`.
+> When a transport is added later, only two files need to change:
+> 1. `src/server/bridge.js` — replace the stub with the real `send(platform, action, params)` implementation.
+> 2. `src/browser/background/index.js` — receive transport messages and call the existing `dispatch(platform, action, params)` (the same generic dispatcher the dashboard uses).
 >
-> When that lands, no plugin changes are required — plugins are already speaking the public-action contract that ZEN commands will use.
+> Plugins do not need to change — they already speak the public-action contract.
 
 ## Build & test
 

@@ -15,7 +15,7 @@ Filename matches the function it exports (`post.js` exports `post`).
 
 Social MCP lets AI agents drive social media via clean MCP tool calls instead of DOM scraping. Two parts:
 
-1. **Node MCP server** (`src/server/`) — stdio MCP; relays commands to the extension via ZEN WebSocket.
+1. **Node MCP server** (`src/server/`) — stdio MCP; transport to the extension is **not yet implemented** — tools throw a clear error until wired.
 2. **Chrome MV3 extension** (`src/browser/`) — plugin-based host (background + dashboard) that loads platform plugins.
 
 **Supported platforms:** `facebook` (active), `x` / `instagram` / `threads` (schema-reserved, plugin pending).
@@ -25,8 +25,8 @@ Social MCP lets AI agents drive social media via clean MCP tool calls instead of
 ```
 AI Agent (stdio/MCP)
     └── src/server/index.js          MCP tools
-            └── src/server/bridge.js ZEN relay (ws://127.0.0.1:8420/zen)
-                    └── src/browser/background/index.js  MV3 SW (ZEN peer)
+            └── src/server/bridge.js (placeholder — throws until transport added)
+                    └── src/browser/background/index.js  MV3 SW
                             └── src/browser/background/dispatch.js  ← reads plugin registry
                                     └── src/browser/platform/<id>/content.js  DOM actions
 ```
@@ -93,7 +93,7 @@ src/browser/platform/<id>/
 - `navigate.js`, `sendmessage.js` — generic Chrome tab helpers (imported by plugin background handlers as needed).
 - `opendashboard.js` — opens the dashboard page.
 
-> ⚠️ **Known gap:** the background service worker does not yet open a ZEN peer, so the MCP-server-to-extension path is not functional. The dashboard is currently the only way to invoke plugin actions. See "The MCP-server-to-extension ZEN bridge" in [docs/plugin-dev-guide.md](../docs/plugin-dev-guide.md) for the planned implementation.
+> ⚠️ **Known gap:** the MCP server has no transport to the extension yet — `src/server/bridge.js` is a placeholder that throws. The dashboard is currently the only way to invoke plugin actions. When a transport is chosen, only `bridge.js` and `src/browser/background/index.js` need to change — plugins already speak the public-action contract.
 
 ### `src/browser/dashboard/`
 - `index.html` — generic shell: sidebar + content container, no platform markup.
@@ -113,24 +113,19 @@ Reusable utilities for both background and content scripts (content scripts re-i
 
 ## Server — Zero External Runtime Deps
 
-Uses only Node built-ins + `@akaoio/zen`:
+Uses only Node built-ins:
 
 | File | Purpose | Replaces |
 |------|---------|----------|
 | `src/server/mcp.js` | MCP JSON-RPC server + zod-compatible `schema` builder | `@modelcontextprotocol/sdk` + `zod` |
-| `src/server/bridge.js` | ZEN relay (`new ZEN({ web: httpServer })`) | `ws` |
+| `src/server/bridge.js` | Placeholder transport — throws until a real transport is wired | — |
 | `src/server/index.js` | Declares 9 MCP tools via `mcp.tool(name, desc, schema, handler)` | — |
 
-All deps live in the root `package.json`. There is no per-folder package.json.
+There is no per-folder package.json. The root `package.json` currently has no runtime dependencies.
 
 ### Bridge — `src/server/bridge.js`
-- Starts a ZEN relay on `SOCIALMCP_PORT` (default `8420`), path `/zen`.
-- Derives a secp256k1 keypair from `SOCIALMCP_SECRET` via `ZEN.hash() → ZEN.pair(null, { seed })`.
-- `send(platform, action, params, timeout = 30000)` → puts JSON to `~<pub>/cmd/<id>`, awaits `~<pub>/res/<id>`.
-- Every `.put()` includes `{ authenticator: pair }`; ZEN rejects unsigned writes to `~<pub>/...`.
-- Commands: `{ platform, action, params, ts }` · Responses: `{ ok }` or `{ err }`.
-
-The extension background derives the same keypair (`chrome.storage.local.secret`, fallback to built-in default) and is the only peer permitted to sign writes.
+- Stub: every `send(platform, action, ...)` throws `socialmcp: no transport between MCP server and extension yet`.
+- When a transport is added, this is the only server-side file that needs to change.
 
 ## MCP tools — `src/server/index.js`
 
@@ -158,28 +153,24 @@ The platform string in MCP must already be in `schema.enum([...])` in `src/serve
 ## Build system — `build.js`
 
 - **rollup** + `@rollup/plugin-node-resolve` + `@rollup/plugin-json` + `@rollup/plugin-terser`.
-- `npm run build:server` → `build/server/index.js` (ESM, only `node:*` external; ZEN bundled).
+- `npm run build:server` → `build/server/index.js` (ESM, only `node:*` external).
 - `npm run build:ext` → `build/browser/`:
   - **auto-discovers** platforms by scanning `src/browser/platform/*/plugin.js`.
   - `background/index.js` — ESM bundle.
   - `<platform>/content.js` — IIFE bundle from `src/browser/platform/<id>/content.js`.
   - `dashboard/index.js` — IIFE bundle.
   - `manifest.json` — **regenerated** from `src/browser/manifest.json` + each plugin's `hosts.js` (auto-fills `content_scripts` + `host_permissions`).
-  - `dashboard/index.{html,css}`, plugin CSS files (recursively copied from `src/browser/platform/**/*.css`), wasm files (`pen.wasm`, `crypto.wasm` from `@akaoio/zen`).
+  - `dashboard/index.{html,css}` + plugin CSS files (recursively copied from `src/browser/platform/**/*.css`).
 - `NODE_ENV=production node build.js` enables terser minification.
-- `zenServiceStub` rollup plugin stubs the broken `import("./service.js")` in ZEN and sets `inlineDynamicImports: true`.
 
 ## Environment variables
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `SOCIALMCP_PORT` | `8420` | ZEN relay port (`ws://127.0.0.1:PORT/zen`) |
-| `SOCIALMCP_SECRET` | built-in default | Shared secret for keypair derivation — set a strong random value in production |
+None right now. (Previous `SOCIALMCP_PORT` / `SOCIALMCP_SECRET` belonged to a removed transport.)
 
 ## Testing
 
 No automated tests. Manual verification:
 
-1. **Server**: `node src/server/index.js` → expect `[socialmcp] zen relay on ws://127.0.0.1:8420/zen (pub: <pubkey>)`.
-2. **Extension**: load `src/browser/` (or `build/browser/` after `npm run build:ext`) as an unpacked extension → open the service-worker DevTools → confirm ZEN peer connected → open the dashboard via the extension action.
-3. **Tools**: `npx @modelcontextprotocol/inspector node src/server/index.js` → call a tool with a `platform` that has an open tab.
+1. **Server**: `node src/server/index.js` — starts the stdio MCP server; tool calls will throw until a transport is implemented.
+2. **Extension**: load `src/browser/` (or `build/browser/` after `npm run build:ext`) as an unpacked extension → open the dashboard via the extension action → use the panel to invoke plugin actions.
+3. **Tools**: `npx @modelcontextprotocol/inspector node src/server/index.js` — the schema lists every tool; calls will error until a transport is wired.

@@ -4,7 +4,7 @@ Social MCP là một lớp abstraction cho phép AI agents thao tác mạng xã 
 
 Bao gồm hai thành phần:
 - **Chrome Extension (MV3)**: kiến trúc plugin. Background + dashboard là khung dùng chung; mỗi platform là một plugin tự chứa.
-- **Node MCP Server**: expose MCP tools cho AI agents, giao tiếp với extension qua ZEN WebSocket.
+- **Node MCP Server**: expose MCP tools cho AI agents. Transport giữa server và extension hiện chưa có — tạm thời chỉ dashboard điều khiển được plugin.
 
 ## Vì sao cần Social MCP
 
@@ -22,7 +22,7 @@ AI Agent (Claude, GPT…)
     │  stdio · MCP protocol
     ▼
 Node MCP Server  (src/server/index.js)
-    │  ZEN  ws://127.0.0.1:8420/zen
+    │  ⚠️ transport chưa implement
     ▼
 Extension Background  (src/browser/background/index.js)
     │  reads src/browser/plugins.js → dispatch by platform id
@@ -104,7 +104,7 @@ src/
         scan/                        # quét danh sách Page + selectors.js riêng
   server/
     index.js                         # MCP server (stdio transport)
-    bridge.js                        # ZEN relay server
+    bridge.js                        # placeholder — transport chưa implement
     mcp.js                           # MCP JSON-RPC + schema builder
 build/                               # output đã bundle/minify
 ```
@@ -122,7 +122,7 @@ node src/server/index.js     # MCP server đọc thẳng từ src/
 ### Build production
 
 ```bash
-npm install                  # rollup + plugins + @akaoio/zen
+npm install                  # rollup + plugins
 npm run build                # build cả server lẫn extension
 npm run build:server         # chỉ bundle server
 npm run build:ext            # chỉ bundle extension
@@ -147,12 +147,9 @@ Output:
 
 ## Biến môi trường
 
-| Biến | Mặc định | Mô tả |
-|------|----------|-------|
-| `SOCIALMCP_PORT` | `8420` | Port ZEN relay (`ws://127.0.0.1:PORT/zen`) |
-| `SOCIALMCP_SECRET` | *(built-in default)* | Shared secret để derive keypair secp256k1 — đặt giá trị random mạnh ở môi trường thật |
+Hiện tại không cần biến môi trường nào — transport giữa MCP server và extension chưa được implement.
 
-> **Farm setup**: mỗi browser profile chạy một extension riêng; mỗi MCP server instance dùng port khác nhau.
+> **Farm setup** (kế hoạch): mỗi browser profile chạy một extension riêng; mỗi MCP server instance dùng port khác nhau — sẽ được quy định khi transport được thêm.
 
 ## Thêm một platform mới
 
@@ -166,4 +163,4 @@ Xem chi tiết trong [docs/plugin-dev-guide.md](docs/plugin-dev-guide.md). Tóm 
 
 Các id `x`, `instagram`, `threads` đã được khai báo sẵn trong schema MCP — chỉ cần thêm plugin tương ứng là dùng được.
 
-> ⚠️ **Lưu ý:** background service worker chưa mở ZEN peer, nên luồng MCP server → extension hiện chưa hoạt động. Dashboard là cách duy nhất để invoke actions hiện nay. Xem phần "MCP-server-to-extension ZEN bridge" trong plugin dev guide.
+> ⚠️ **Lưu ý:** transport giữa MCP server và extension hiện chưa được implement. Dashboard là cách duy nhất để invoke actions hiện nay.

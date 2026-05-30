@@ -14,8 +14,5 @@
     "@rollup/plugin-node-resolve": "^15.3.1",
     "@rollup/plugin-terser": "^0.4.4",
     "rollup": "^4.60.4"
-  },
-  "dependencies": {
-    "@akaoio/zen": "^1.0.32"
   }
 }

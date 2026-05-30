@@ -3,7 +3,7 @@
  * MCP server entry point.
  *
  * Transport: stdio  (add to Claude Desktop / any MCP client as a local process)
- * Bridge:    ZEN relay on ws://127.0.0.1:SOCIALMCP_PORT/zen (default 8420)
+ * Bridge:    not implemented yet — tools throw a clear error until wired.
  *
  * Claude Desktop config example:
  * {

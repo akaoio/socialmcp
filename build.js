@@ -24,39 +24,21 @@ const prod   = process.env.NODE_ENV === 'production';
 
 const minify = prod ? [terser()] : [];
 
-// zen.js has a dynamic import("./service.js") which references a non-existent
-// ./xdg.js in the zen package root. Stub it out so rollup can bundle cleanly.
-const zenServiceStub = {
-  name: 'zen-service-stub',
-  resolveId(id, importer) {
-    if (id === './service.js' && importer && importer.replace(/\\/g, '/').includes('@akaoio/zen')) {
-      return '\0zen-service-stub';
-    }
-  },
-  load(id) {
-    if (id === '\0zen-service-stub') return 'export default function(){}';
-  },
-};
-
 // ── Server ────────────────────────────────────────────────────────────────────
 
 async function buildserver() {
   const bundle = await rollup({
     input: 'src/server/index.js',
     external: (id) => id.startsWith('node:'),
-    plugins: [zenServiceStub, nodeResolve(), json(), ...minify],
+    plugins: [nodeResolve(), json(), ...minify],
   });
   await bundle.write({
-    file:                  'build/server/index.js',
-    format:                'esm',
-    banner:                '#!/usr/bin/env node',
-    sourcemap:             !prod,
-    inlineDynamicImports:  true,
+    file:      'build/server/index.js',
+    format:    'esm',
+    banner:    '#!/usr/bin/env node',
+    sourcemap: !prod,
   });
   await bundle.close();
-  // .wasm files are loaded at runtime relative to the bundle — must be co-located
-  fs.copyFileSync('node_modules/@akaoio/zen/pen.wasm',    'build/server/pen.wasm');
-  fs.copyFileSync('node_modules/@akaoio/zen/crypto.wasm', 'build/server/crypto.wasm');
   console.log('✓ server → build/server/index.js');
 }
 
@@ -82,13 +64,12 @@ async function buildext() {
   fs.mkdirSync(`${outdir}/background`, { recursive: true });
   const bg = await rollup({
     input: 'src/browser/background/index.js',
-    plugins: [zenServiceStub, nodeResolve({ browser: true }), json(), ...minify],
+    plugins: [nodeResolve({ browser: true }), json(), ...minify],
   });
   await bg.write({
-    file:                 `${outdir}/background/index.js`,
-    format:               'esm',
-    sourcemap:            !prod,
-    inlineDynamicImports: true,
+    file:      `${outdir}/background/index.js`,
+    format:    'esm',
+    sourcemap: !prod,
   });
   await bg.close();
   console.log('✓ background → build/browser/background/index.js');
@@ -136,11 +117,7 @@ async function buildext() {
     js:      [`${p}/content.js`],
     run_at:  'document_idle',
   }));
-  baseManifest.host_permissions = [
-    'ws://127.0.0.1/*',
-    'http://127.0.0.1/*',
-    ...PLATFORMS.flatMap(p => platformhosts[p].map(h => `https://*.${h}/*`)),
-  ];
+  baseManifest.host_permissions = PLATFORMS.flatMap(p => platformhosts[p].map(h => `https://*.${h}/*`));
   fs.writeFileSync(`${outdir}/manifest.json`, JSON.stringify(baseManifest, null, 2));
   fs.copyFileSync('src/browser/dashboard/index.html',  `${outdir}/dashboard/index.html`);
   fs.copyFileSync('src/browser/dashboard/index.css',   `${outdir}/dashboard/index.css`);
@@ -151,10 +128,7 @@ async function buildext() {
     filter: src => fs.statSync(src).isDirectory() || src.endsWith('.css'),
   });
 
-  // .wasm files are fetched at runtime by @akaoio/zen — must be served from the extension root
-  fs.copyFileSync('node_modules/@akaoio/zen/pen.wasm',    `${outdir}/pen.wasm`);
-  fs.copyFileSync('node_modules/@akaoio/zen/crypto.wasm', `${outdir}/crypto.wasm`);
-  console.log('✓ manifest + dashboard + plugin css + wasm files copied');
+  console.log('✓ manifest + dashboard + plugin css copied');
 }
 
 // ── Runner ────────────────────────────────────────────────────────────────────

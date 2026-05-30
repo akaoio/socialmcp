@@ -156,8 +156,7 @@ scripts/*.jpg
 scripts/debug-*.json
 scripts/debug-*.txt
 
-# .env files — put SOCIALMCP_SECRET here, never commit real values
-# Copy .env.example → .env and fill in your secret
+# .env files
 .env
 .env.local
 .env.*.local
