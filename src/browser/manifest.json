@@ -6,6 +6,8 @@
 
   "permissions": [
     "tabs",
+    "tabGroups",
+    "alarms",
     "scripting",
     "storage"
   ],
@@ -19,7 +21,8 @@
   },
 
   "host_permissions": [
-    "https://*.facebook.com/*"
+    "https://*.facebook.com/*",
+    "http://localhost/*"
   ],
 
   "background": {

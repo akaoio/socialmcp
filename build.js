@@ -27,6 +27,27 @@ const common = {
   logLevel:  'info',
 };
 
+// Stub Node-only files that zen.js dynamically imports for browser builds
+const stubnodeplugin = {
+  name: 'stubnode',
+  setup(build) {
+    // Stub service.js / xdg.js (Node-only helpers in zen)
+    build.onResolve({ filter: /[/\\](service|xdg)(\.min)?\.js$/ }, args => ({
+      path: args.path,
+      namespace: 'stubnode',
+    }));
+    // Stub Node built-in dynamic imports (e.g. node:fs/promises inside zen.js)
+    build.onResolve({ filter: /^(node:|fs|path|os|url|child_process|crypto)/ }, args => ({
+      path: args.path,
+      namespace: 'stubnode',
+    }));
+    build.onLoad({ filter: /.*/, namespace: 'stubnode' }, () => ({
+      contents: '',
+      loader: 'js',
+    }));
+  },
+};
+
 // ── Server ────────────────────────────────────────────────────────────────────
 
 async function buildserver() {
@@ -58,9 +79,12 @@ async function buildext() {
   const outdir = 'build/browser';
   fs.mkdirSync(outdir, { recursive: true });
 
+  const browserplugins = [stubnodeplugin];
+
   // Background service worker (ESM, browser platform)
   await esbuild.build({
     ...common,
+    plugins:     browserplugins,
     entryPoints: ['src/browser/background/index.js'],
     outfile:     `${outdir}/background/index.js`,
     format:      'esm',
@@ -72,6 +96,7 @@ async function buildext() {
   for (const p of PLATFORMS) {
     await esbuild.build({
       ...common,
+      plugins:     browserplugins,
       entryPoints: [`src/browser/platform/${p}/content.js`],
       outfile:     `${outdir}/${p}/content.js`,
       format:      'iife',
@@ -83,6 +108,7 @@ async function buildext() {
   // Dashboard (IIFE)
   await esbuild.build({
     ...common,
+    plugins:     browserplugins,
     entryPoints: ['src/browser/dashboard/index.js'],
     outfile:     `${outdir}/dashboard/index.js`,
     format:      'iife',
@@ -105,15 +131,27 @@ async function buildext() {
     js:      [`${p}/content.js`],
     run_at:  'document_idle',
   }));
-  baseManifest.host_permissions = PLATFORMS.flatMap(p => platformhosts[p].map(h => `https://*.${h}/*`));
+  const platformHostPerms = PLATFORMS.flatMap(p => platformhosts[p].map(h => `https://*.${h}/*`));
+  const baseHostPerms = (baseManifest.host_permissions ?? []).filter(hp => !platformHostPerms.includes(hp));
+  baseManifest.host_permissions = [...baseHostPerms, ...platformHostPerms];
   fs.writeFileSync(`${outdir}/manifest.json`, JSON.stringify(baseManifest, null, 2));
   fs.copyFileSync('src/browser/dashboard/index.html', `${outdir}/dashboard/index.html`);
   fs.copyFileSync('src/browser/dashboard/index.css',  `${outdir}/dashboard/index.css`);
 
   // Copy plugin CSS files (each platform may declare its own panel.css)
+  function hascss(dirpath) {
+    return fs.readdirSync(dirpath, { withFileTypes: true }).some(e =>
+      e.isFile() && e.name.endsWith('.css') ||
+      e.isDirectory() && hascss(`${dirpath}/${e.name}`)
+    );
+  }
   fs.cpSync('src/browser/platform', `${outdir}/platform`, {
     recursive: true,
-    filter: src => fs.statSync(src).isDirectory() || src.endsWith('.css'),
+    filter: src => {
+      const stat = fs.statSync(src);
+      if (stat.isFile()) return src.endsWith('.css');
+      return hascss(src);
+    },
   });
 
   console.log('✓ manifest + dashboard + plugin css copied');

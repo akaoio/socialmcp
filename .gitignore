@@ -162,3 +162,5 @@ scripts/debug-*.txt
 .env.*.local
 
 build/
+scripts/
+tmp/

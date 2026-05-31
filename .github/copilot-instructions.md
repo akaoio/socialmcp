@@ -93,7 +93,7 @@ src/browser/platform/<id>/
 - `navigate.js`, `sendmessage.js` — generic Chrome tab helpers (imported by plugin background handlers as needed).
 - `opendashboard.js` — opens the dashboard page.
 
-> ⚠️ **Known gap:** the MCP server has no transport to the extension yet — `src/server/bridge.js` is a placeholder that throws. The dashboard is currently the only way to invoke plugin actions. When a transport is chosen, only `bridge.js` and `src/browser/background/index.js` need to change — plugins already speak the public-action contract.
+> **Transport:** HTTP relay on `http://localhost:8420`. Server (`bridge.js`) queues jobs; extension (`peer.js`) long-polls `GET /job` and POSTs results to `POST /result/:id`.
 
 ### `src/browser/dashboard/`
 - `index.html` — generic shell: sidebar + content container, no platform markup.
@@ -118,20 +118,27 @@ Uses only Node built-ins:
 | File | Purpose | Replaces |
 |------|---------|----------|
 | `src/server/mcp.js` | MCP JSON-RPC server + zod-compatible `schema` builder | `@modelcontextprotocol/sdk` + `zod` |
-| `src/server/bridge.js` | Placeholder transport — throws until a real transport is wired | — |
+| `src/server/bridge.js` | HTTP relay server (long-poll RPC) | — |
 | `src/server/index.js` | Declares 9 MCP tools via `mcp.tool(name, desc, schema, handler)` | — |
 
-There is no per-folder package.json. The root `package.json` currently has no runtime dependencies.
+There is no per-folder package.json. The root `package.json` has no runtime dependencies.
 
 ### Bridge — `src/server/bridge.js`
-- Stub: every `send(platform, action, ...)` throws `socialmcp: no transport between MCP server and extension yet`.
-- When a transport is added, this is the only server-side file that needs to change.
+- **HTTP long-poll relay** on `http://localhost:8420`. Uses only Node `http` built-in — no external deps.
+- `GET /job` — long-poll (up to 25 s); returns next pending job as JSON or 204 if none arrive.
+- `POST /result/:id` — extension posts `{ ok, value? }` or `{ ok: false, error }` to resolve the waiting `send()` promise.
+- `send(platform, action, params, timeout)` queues a job and awaits the result promise.
+
+### Extension peer — `src/browser/background/peer.js`
+- Long-polls `GET http://localhost:8420/job` (26 s timeout, retries on error with 3 s backoff).
+- On 200: calls `dispatch(platform, action, params)`, POSTs result to `POST /result/:id`.
+- No external libraries — uses the service worker's native `fetch`.
 
 ## MCP tools — `src/server/index.js`
 
 Each tool takes a `platform` enum (`facebook | x | instagram | threads`) plus its own params, and calls `bridge.send(p, action, params)` wrapped in `reply()`.
 
-Current tools: `post`, `comment`, `react`, `scroll`, `search`, `follow`, `unfollow`, `message`, `profile`.
+Current tools: `post`, `scan`.
 
 To add a tool:
 1. Add `mcp.tool(...)` in `src/server/index.js`.

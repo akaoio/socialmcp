@@ -87,6 +87,7 @@ Fields:
 | `id` | string | yes | matches folder name + MCP `platform` enum |
 | `label` | string | yes | sidebar button text |
 | `hosts` | string[] | yes | from `hosts.js` |
+| `url` | string | no | default landing URL opened when no matching tab is found (e.g. `'https://www.facebook.com'`); falls back to `https://<hosts[0]>` |
 | `css` | string | no | extension-relative path to a stylesheet auto-injected into the dashboard before mount |
 | `background` | object | no | map of `<public-action> → (tab, params) => result` |
 | `dashboard` | object | no | `{ mount(container) }` — see below |

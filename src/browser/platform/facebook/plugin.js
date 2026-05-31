@@ -7,6 +7,7 @@ export default {
   id:    'facebook',
   label: 'Facebook',
   hosts,
+  url:   'https://www.facebook.com',
   css:   'platform/facebook/dashboard/panel.css',
   background: {
     // Public action names (MCP tools + dashboard-facing aliases) → handler(tab, params).

@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "socialmcp": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/build/server/index.js"]
+    }
+  }
+}
