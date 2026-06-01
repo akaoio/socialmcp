@@ -11,16 +11,15 @@
  */
 
 import http from 'http';
-import fs   from 'fs';
-import path from 'path';
-import { launch } from './launch.js';
+import { launch }       from '../launch.js';
+import { resolvemedia } from './resolvemedia.js';
 
 const PORT    = 8420;
 const jobs    = [];        // queued jobs waiting for extension to pick up
 const waiters = [];        // pending GET /job responses waiting for a job
 const pending = new Map(); // id → { resolve, reject, timer }
 
-let lastpeerat = 0;    // timestamp of last GET /job from the extension
+let lastpeerat = 0;     // timestamp of last GET /job from the extension
 let launching  = false; // true while a browser launch is in progress
 
 const server = http.createServer((req, res) => {
@@ -81,23 +80,6 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => process.stderr.write(`socialmcp: relay on http://localhost:${PORT}\n`));
 server.on('error', err => process.stderr.write(`socialmcp: relay error — ${err.message}\n`));
 
-const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
-
-function todataurl(p) {
-  const ext  = path.extname(p).slice(1).toLowerCase();
-  const mime = MIME[ext] ?? 'application/octet-stream';
-  return `data:${mime};base64,` + fs.readFileSync(p).toString('base64');
-}
-
-function resolvemedia(params) {
-  if (!params?.media?.length) return params;
-  return {
-    ...params,
-    media: params.media.map(m => (path.isAbsolute(m) && fs.existsSync(m)) ? todataurl(m) : m),
-  };
-}
-
-// Exported singleton — HTTP server starts at module load, no init needed.
 export const bridge = {
   async send(platform, action, params, timeout = 30000) {
     const id      = Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -117,7 +99,6 @@ export const bridge = {
       if (waiters.length > 0) waiters.shift()(job);
       else jobs.push(job);
 
-      // Auto-launch: if no peer has polled recently, start the browser.
       const peerstale = Date.now() - lastpeerat > 5000;
       if (peerstale && !launching) {
         launching = true;
@@ -126,9 +107,7 @@ export const bridge = {
           if (Date.now() - lastpeerat <= 5000) { launching = false; return; }
           launch()
             .catch(e => process.stderr.write(`socialmcp: ${e.message}\n`))
-            .finally(() => {
-              setTimeout(() => { launching = false; }, 30000);
-            });
+            .finally(() => { setTimeout(() => { launching = false; }, 30000); });
         }, 2000);
       }
     });

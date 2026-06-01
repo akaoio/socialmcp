@@ -1,4 +1,4 @@
-import { findtab }    from './findtab.js';
+import { findtab }    from './findtab/findtab.js';
 import { sendmessage } from './sendmessage.js';
 import { screenshot }  from './screenshot.js';
 import { getdom }      from './getdom.js';

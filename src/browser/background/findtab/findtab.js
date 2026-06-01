@@ -1,12 +1,8 @@
-import { waitload }  from './waitload.js';
-import { grouptab } from './grouptab.js';
+import { waitload }  from '../waitload.js';
+import { grouptab } from '../grouptab.js';
+import { gettabs }  from './gettabs.js';
 
 const KEY = 'socialmcp:tabs'; // session storage: { [platformId]: tabId }
-
-async function gettabs() {
-  const r = await chrome.storage.session.get([KEY]);
-  return r[KEY] ?? {};
-}
 
 // findtab(id, hosts, url)
 // Always returns a tab owned by socialmcp — never touches user-opened tabs.

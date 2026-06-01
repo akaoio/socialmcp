@@ -1,4 +1,5 @@
-import { plugins } from '../plugins.js';
+import { plugins }  from '../../plugins.js';
+import { activate } from './activate.js';
 
 export async function init() {
   const nav     = document.getElementById('sidebar-nav');
@@ -17,7 +18,7 @@ export async function init() {
     const btn = document.createElement('button');
     btn.className   = 'platformbtn';
     btn.textContent = plugin.label;
-    btn.addEventListener('click', () => activate(plugin.id));
+    btn.addEventListener('click', () => activate(panels, plugin.id));
     nav.appendChild(btn);
 
     const panel = document.createElement('div');
@@ -28,17 +29,5 @@ export async function init() {
     panels.set(plugin.id, { btn, panel, plugin, mounted: false });
   }
 
-  async function activate(id) {
-    for (const [pid, entry] of panels) {
-      const active = pid === id;
-      entry.btn.classList.toggle('active', active);
-      entry.panel.classList.toggle('active', active);
-      if (active && !entry.mounted) {
-        entry.mounted = true;
-        await entry.plugin.dashboard.mount(entry.panel);
-      }
-    }
-  }
-
-  if (plugins.length) await activate(plugins[0].id);
+  if (plugins.length) await activate(panels, plugins[0].id);
 }
