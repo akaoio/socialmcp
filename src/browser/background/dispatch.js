@@ -1,8 +1,8 @@
 import { findtab }    from './findtab/findtab.js';
 import { sendmessage } from './sendmessage.js';
-import { screenshot }  from './screenshot.js';
-import { getdom }      from './getdom.js';
-import { getaxstree }  from './getaxstree.js';
+import { screenshot }  from '../builtin/screenshot/screenshot.js';
+import { getdom }      from '../builtin/getdom/getdom.js';
+import { getaxstree }  from '../builtin/getaxstree/getaxstree.js';
 import { plugins }    from '../plugins.js';
 
 // Plugin registry — keyed by id. The core never knows platform-specific concepts;
