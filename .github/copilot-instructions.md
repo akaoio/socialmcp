@@ -8,6 +8,210 @@
 
 ## Naming Convention (HARD RULE)
 
+Function names, file names, and exported identifiers are **single lowercase words from `[a-z]` only**. No camelCase, no underscores, no multi-word names. Example: `post`, `scanpages`, `getaxstree`.
+Filename matches the function it exports (`post.js` exports `post`).
+
+**Each feature is a folder. Each function is a file.** A file that contains two functions is a violation.
+
+## Project Overview
+
+Social MCP lets AI agents drive social media via clean MCP tool calls instead of DOM scraping. Two parts:
+
+1. **Node MCP server** (`src/server/`) — stdio MCP; communicates with the extension via an HTTP long-poll relay (`bridge/bridge.js` + `peer.js`).
+2. **Chrome MV3 extension** (`src/browser/`) — plugin-based host (background + relay page) that loads platform plugins.
+
+**Supported platforms:** `facebook` (active), `x` / `instagram` / `threads` (schema-reserved, plugin pending).
+
+## Architecture
+
+```
+AI Agent (stdio/MCP)
+    └── src/server/index.js          MCP tools
+            └── src/server/bridge/bridge.js (HTTP long-poll relay on localhost:8420)
+                    └── src/browser/background/peer.js  long-poll client
+                            └── src/browser/background/dispatch.js  ← reads plugin registry
+                                    ├── src/browser/builtin/<action>/<action>.js  platform-agnostic
+                                    └── src/browser/platform/<id>/content.js  DOM actions
+```
+
+`src/browser/relay/` is a minimal extension page (`relay.html` + `relay.js`) used by automated tests to send dispatch messages into the background without any UI.
+
+## Plugin Architecture (CRITICAL)
+
+`src/browser/{background,builtin,common}/` are **platform-agnostic**. They must contain ZERO references to `facebook`, `x`, etc. All platform-specific code lives under `src/browser/platform/<id>/`.
+
+For any plugin/feature work, **follow [docs/plugin-dev-guide.md](../docs/plugin-dev-guide.md)** — it is the binding contract.
+
+### Plugin registry — `src/browser/plugins.js`
+
+```js
+import facebook from './platform/facebook/plugin.js';
+export const plugins = [facebook];
+```
+
+### Plugin manifest — `src/browser/platform/<id>/plugin.js`
+
+Each plugin exports a default object:
+
+```js
+{
+  id:    'facebook',         // platform id used in MCP `platform` param
+  label: 'Facebook',         // human label (for future UI)
+  hosts: ['facebook.com'],   // URL substrings used by background findtab()
+  background: { post, scan },  // PUBLIC action names → (tab, params) => result
+}
+```
+
+**Keys in `plugin.background` are the public action names** — they must match what `bridge.send(platform, action, params)` passes (i.e. MCP tool names). Internal action names used between background and content script (`postpage`, `switchpage`, `getpages`) are private to the plugin.
+
+### Plugin folder layout
+
+```
+src/browser/platform/<id>/
+  plugin.js                     ← THE manifest (default export)
+  hosts.js                      ← export const hosts = [...]
+  content.js                    ← content-script entry; HANDLERS map + chrome.runtime.onMessage
+  background/
+    <action>.js                 ← ONE FILE PER PUBLIC ACTION (post.js, scan.js, …)
+  <feature>/                    ← grouped DOM logic (post/, scan/, …)
+    selectors.js                ← selectors are LOCAL TO THE FEATURE
+    <step>.js                   ← one function per file
+```
+
+## Browser core (platform-agnostic)
+
+### `src/browser/background/`
+- `index.js` — service-worker entry; wires `chrome.runtime.onMessage`; starts `peer.js` long-poll loop.
+- `onmessage.js` — receives `{ type: 'ui:dispatch', platform, action, params }`, calls `dispatch`, replies via `sendResponse`.
+- `dispatch.js` — looks up builtin or plugin handler; calls it with `(tab, params)`.
+- `findtab/findtab.js` — `findtab(id, hosts, url)` returns the socialmcp-owned tab (tracked in `chrome.storage.session`). Creates on first call. **Never reuses user-opened tabs.**
+- `findtab/gettabs.js` — reads the owned-tab map from session storage.
+- `grouptab.js` — adds tab to "socialmcp" tab group.
+- `navigate.js`, `sendmessage.js` — generic Chrome tab helpers.
+- `waitload.js` — resolves when tab finishes loading.
+- `peer.js` — long-polls `GET /job` on localhost:8420, calls `dispatch`, POSTs result.
+
+### `src/browser/builtin/`
+Platform-agnostic action handlers available for every platform — no plugin handler needed:
+- `screenshot/screenshot.js` — captures visible tab as PNG data URL.
+- `getdom/getdom.js` — returns `document.documentElement.outerHTML`.
+- `getaxstree/getaxstree.js` — returns compact ARIA tree (DOM walk via `chrome.scripting.executeScript`).
+
+### `src/browser/common/`
+Reusable utilities for content scripts (bundled as IIFE — keep dependency-free vanilla JS):
+- `sleep.js` — `sleep(ms)` promise.
+
+### `src/browser/relay/`
+- `relay.html` + `relay.js` — minimal extension page used by tests; exposes `window.dispatch(platform, action, params)`.
+
+> **Transport:** HTTP relay on `http://localhost:8420`. Server (`bridge/bridge.js`) queues jobs; extension (`peer.js`) long-polls `GET /job` and POSTs results to `POST /result/:id`.
+
+## Selector discipline
+
+- No shared `selectors.js` at the platform root. Each feature folder owns its own `selectors.js`.
+- Prefer `aria-label`, `role`, `data-testid` over class names.
+
+## Server — Zero External Runtime Deps
+
+| File | Purpose |
+|------|---------|
+| `src/server/schema.js` | zod-compatible `schema` builder (internal class `sch`) |
+| `src/server/mcpserver.js` | MCP JSON-RPC server class `mcpserver` |
+| `src/server/stdioservertransport.js` | stdio transport class `stdioservertransport` |
+| `src/server/bridge/bridge.js` | HTTP relay singleton `bridge` (long-poll RPC, port 8420) |
+| `src/server/bridge/todataurl.js` | `todataurl(path)` — local file → base64 data URL |
+| `src/server/bridge/resolvemedia.js` | `resolvemedia(params)` — converts local media paths in params |
+| `src/server/launch.js` | `launch()` — auto-launch Chromium with isolated profile + extension |
+| `src/server/ocr.js` | `ocr(dataurl, lang)` — server-side OCR via `tesseract.js` npm package |
+| `src/server/index.js` | MCP server entry — declares 6 tools via `mcp.tool(...)` |
+
+No per-folder package.json. No runtime dependencies.
+
+### Bridge — `src/server/bridge/bridge.js`
+- Singleton `export const bridge = { send(...) }` — HTTP server starts at module load.
+- `GET /job` long-poll (up to 25 s); `POST /result/:id` resolves the waiting promise.
+- **Auto-launch:** if no peer polled in last 5 s, calls `launch()` after 2 s delay.
+
+## MCP tools — `src/server/index.js`
+
+| Tool | Action | Returns |
+|------|--------|---------|
+| `post` | `post` | post result |
+| `scan` | `scan` | list of managed Pages |
+| `screenshot` | `screenshot` (builtin) | MCP `image` content (PNG base64) |
+| `getdom` | `getdom` (builtin) | `{ html }` — full outerHTML |
+| `getaxstree` | `getaxstree` (builtin) | `{ tree }` — compact ARIA tree |
+| `ocr` | `screenshot` (builtin) → server OCR | `{ text }` — Tesseract output |
+
+**Builtin actions** are handled in `dispatch.js` before plugin lookup — work for every platform.
+
+To add a tool:
+1. Add `mcp.tool(...)` in `src/server/index.js`.
+2. Add handler in `src/browser/builtin/<action>/<action>.js` (platform-agnostic) OR in the plugin's `background/<action>.js` + content script `HANDLERS`.
+
+## Adding a new platform
+
+Follow [docs/plugin-dev-guide.md](../docs/plugin-dev-guide.md). Summary:
+
+1. `src/browser/platform/<id>/` — copy facebook's structure: `plugin.js`, `hosts.js`, `content.js`, `background/<action>.js`, feature folders.
+2. Add to `src/browser/plugins.js`.
+3. Add `content_scripts` + `host_permissions` to `src/browser/manifest.json` (dev mode only; prod build auto-generates from `hosts.js`).
+
+`build.js` auto-discovers any `src/browser/platform/<id>/plugin.js` — you do NOT need to edit it.
+
+The platform string must already be in `schema.enum([...])` in `src/server/index.js` — `facebook | x | instagram | threads` are pre-registered.
+
+## Build system — `build.js`
+
+- **esbuild** (single devDependency).
+- `npm run build:server` → `build/server/index.js` (ESM, `platform: 'node'`).
+- `npm run build:ext` → `build/browser/`:
+  - **auto-discovers** platforms by scanning `src/browser/platform/*/plugin.js`.
+  - `background/index.js` — ESM bundle.
+  - `<platform>/content.js` — IIFE bundle.
+  - `manifest.json` — regenerated from `src/browser/manifest.json` + each plugin's `hosts.js`.
+  - `relay/relay.{html,js}` — copied as-is.
+- `NODE_ENV=production node build.js` enables minification.
+
+## Environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SOCIALMCP_CHROMIUM` | auto-detected | Path to Chromium binary for auto-launch |
+
+Auto-detected candidates: `/usr/lib/chromium/chromium`, `/usr/bin/chromium-browser`, `/usr/bin/google-chrome`, macOS Chrome.
+
+The relay port (`8420`) is hardcoded in `bridge/bridge.js`.
+
+## Testing
+
+```bash
+npm test                                                      # build ext + run all tests
+FACEBOOK_COOKIES=$(node scripts/extractcookies.js) npm test   # include real Facebook E2E
+```
+
+Test files:
+- `tests/extension.spec.js` — extension loads, service worker starts, relay page exposes `dispatch`.
+- `tests/debug.spec.js` — screenshot, getdom, getaxstree, ocr tools end-to-end.
+- `tests/facebook.spec.js` — full scan pipeline via relay page. Skipped unless `FACEBOOK_COOKIES` set.
+- `tests/post.spec.js` — full post pipeline. Skipped unless `FACEBOOK_COOKIES` + `FACEBOOK_POST_PAGE` set.
+
+**Design principle:** no mocks — every test exercises real production code paths end-to-end.
+
+**Manual verification:**
+1. `node src/server/index.js` — starts stdio MCP server + HTTP relay on `localhost:8420`.
+2. Load `build/browser/` as unpacked extension in Chrome.
+3. `npx @modelcontextprotocol/inspector node src/server/index.js` — inspect tools live.
+
+
+## Documentation Rules (ALWAYS follow)
+
+- **Keep this file up to date** when architecture, plugin layout, dependencies, build system, or conventions change.
+- **Keep `README.md` in sync** with actual setup/usage.
+- **Write a diary entry** at `docs/diary/YYYYMMDDHHmm.md` for every session that makes meaningful changes (what changed, why, tradeoffs).
+
+## Naming Convention (HARD RULE)
+
 Function names, file names, and exported identifiers are **single lowercase words from `[a-z]` only**. No camelCase, no underscores, no multi-word names. Example: `mount`, `post`, `scanpages`, `filetourl`, `setupimagepicker`.
 Filename matches the function it exports (`post.js` exports `post`).
 

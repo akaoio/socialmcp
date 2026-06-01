@@ -3,8 +3,8 @@
 Social MCP là một lớp abstraction cho phép AI agents thao tác mạng xã hội thông qua một bộ tools MCP đơn giản — không cần phân tích DOM.
 
 Bao gồm hai thành phần:
-- **Chrome Extension (MV3)**: kiến trúc plugin. Background + dashboard là khung dùng chung; mỗi platform là một plugin tự chứa.
-- **Node MCP Server**: expose MCP tools cho AI agents. Kết nối với extension qua HTTP long-poll relay (`bridge.js` ↔ `peer.js`) trên `localhost:8420`.
+- **Chrome Extension (MV3)**: kiến trúc plugin. Background là khung dùng chung; mỗi platform là một plugin tự chứa.
+- **Node MCP Server**: expose MCP tools cho AI agents. Kết nối với extension qua HTTP long-poll relay (`bridge/bridge.js` ↔ `peer.js`) trên `localhost:8420`.
 
 ## Vì sao cần Social MCP
 
@@ -13,7 +13,7 @@ Các giải pháp như Playwright MCP có điểm nghẽn là DOM rất lớn:
 - Agents phải tự viết selector code trong lúc làm việc, rất mất thời gian.
 - Khó triển khai farm quy mô lớn.
 
-Social MCP giúp agents không cần giải DOM — chỉ cần gọi tools như `post`, `comment`, `react`… như một nhân viên thực thụ.
+Social MCP giúp agents không cần giải DOM — chỉ cần gọi tools như `post`, `scan`… như một nhân viên thực thụ.
 
 ## Kiến trúc
 
@@ -22,10 +22,11 @@ AI Agent (Claude, GPT…)
     │  stdio · MCP protocol
     ▼
 Node MCP Server  (src/server/index.js)
-    │  HTTP long-poll relay  localhost:8420  (bridge.js ↔ peer.js)
+    │  HTTP long-poll relay  localhost:8420  (bridge/bridge.js ↔ peer.js)
     ▼
 Extension Background  (src/browser/background/index.js)
     │  reads src/browser/plugins.js → dispatch by platform id
+    ├─ src/browser/builtin/<action>/   platform-agnostic builtins
     ▼
 Content Script  (src/browser/platform/<id>/content.js)
     │  DOM API
@@ -33,11 +34,11 @@ Content Script  (src/browser/platform/<id>/content.js)
 facebook.com / x.com / instagram.com / threads.net
 ```
 
-Dashboard (`src/browser/dashboard/`) là một trang riêng của extension, dùng để chạy tay từng action — cũng đọc plugin registry và lazy-mount UI panel của từng plugin.
+`src/browser/relay/` là trang extension tối giản (`relay.html` + `relay.js`) dùng bởi test automation để gửi dispatch messages vào background mà không cần UI.
 
 ## Plugin Architecture
 
-`src/browser/{background,dashboard,common}/` hoàn toàn không biết về platform nào cụ thể. Mọi code platform-specific nằm trong `src/browser/platform/<id>/`.
+`src/browser/{background,builtin,common}/` hoàn toàn không biết về platform nào cụ thể. Mọi code platform-specific nằm trong `src/browser/platform/<id>/`.
 
 Để phát triển plugin hoặc thêm tính năng cho plugin, xem **[docs/plugin-dev-guide.md](docs/plugin-dev-guide.md)** — tài liệu quy định bắt buộc về kiến trúc, naming, folder layout, và drift checklist.
 
@@ -45,15 +46,14 @@ Cấu trúc một plugin:
 
 ```
 src/browser/platform/<id>/
-  plugin.js         ← default export: { id, label, hosts, css?, background?, dashboard? }
+  plugin.js         ← default export: { id, label, hosts, background }
   hosts.js          ← URL substrings dùng để tìm tab
   content.js        ← content-script entry + HANDLERS map
-  background/       ← (optional) override per-action cho background
-  dashboard/        ← UI panel: mount.js, panel.{js,css}, state.js, các action handler
+  background/       ← one file per public action
   <feature>/        ← gom code DOM theo tính năng; mỗi feature có selectors.js riêng
 ```
 
-Mỗi feature folder (`post/`, `scan/`, …) tự giữ `selectors.js` riêng. Không có file selectors gom chung — tránh bloat khi nhiều tính năng được thêm.
+Mỗi feature folder (`post/`, `scan/`, …) tự giữ `selectors.js` riêng. Không có file selectors gom chung.
 
 Đăng ký plugin tại `src/browser/plugins.js`:
 
@@ -64,21 +64,18 @@ export const plugins = [facebook];
 
 ## Naming Convention
 
-Tên hàm và file luôn là một từ tiếng Anh viết thường, ký tự `[a-z]` (không camelCase, không gạch nối). File chứa hàm nào thì đặt theo tên hàm đó.
+Tên hàm và file luôn là một từ tiếng Anh viết thường, ký tự `[a-z]` (không camelCase, không gạch nối). File chứa hàm nào thì đặt theo tên hàm đó. **Mỗi feature là một folder; mỗi hàm là một file.**
 
 ## MCP Tools
 
 | Tool | Mô tả |
 |------|-------|
-| `post` | Đăng bài mới |
-| `comment` | Bình luận vào một bài |
-| `react` | Like / react bài viết |
-| `scroll` | Cuộn feed, lấy danh sách bài |
-| `search` | Tìm kiếm bài viết / người dùng |
-| `follow` | Follow một tài khoản |
-| `unfollow` | Unfollow một tài khoản |
-| `message` | Gửi tin nhắn riêng |
-| `profile` | Lấy thông tin profile |
+| `post` | Đăng bài mới lên một Page |
+| `scan` | Lấy danh sách Pages đang quản lý |
+| `screenshot` | Chụp màn hình tab hiện tại (PNG base64) |
+| `getdom` | Lấy toàn bộ outerHTML của trang |
+| `getaxstree` | Lấy cây ARIA compact (hữu ích để agent điều hướng) |
+| `ocr` | Trích xuất text từ screenshot bằng Tesseract |
 
 Tất cả đều nhận `platform`: `facebook` | `x` | `instagram` | `threads`. Hiện chỉ Facebook đã có plugin hoàn chỉnh.
 
@@ -89,23 +86,29 @@ src/
   browser/
     manifest.json
     plugins.js                       # plugin registry
-    common/                          # tiện ích chung dùng lại nhiều nơi: sleep, filetourl
+    common/                          # tiện ích chung: sleep
     background/                      # service-worker host (platform-agnostic)
-      index.js, onmessage.js, opendashboard.js
-      dispatch.js, findtab.js, navigate.js, sendmessage.js
-    dashboard/                       # UI shell (platform-agnostic)
-      index.html, index.css, index.js, init.js, dispatch.js
+      index.js, onmessage.js, dispatch.js
+      findtab/                       # findtab.js + gettabs.js
+      navigate.js, sendmessage.js, waitload.js, grouptab.js, peer.js
+    builtin/                         # platform-agnostic action handlers
+      screenshot/screenshot.js
+      getdom/getdom.js
+      getaxstree/getaxstree.js
+    relay/                           # minimal test page
+      relay.html, relay.js
     platform/
       facebook/
         plugin.js, hosts.js, content.js
-        background/dispatch.js
-        dashboard/                   # UI panel của FB plugin
+        background/                  # post.js, scan.js
         post/                        # compose flow + selectors.js riêng
         scan/                        # quét danh sách Page + selectors.js riêng
   server/
     index.js                         # MCP server (stdio transport)
-    bridge.js                        # HTTP relay server (long-poll, localhost:8420)
-    mcp.js                           # MCP JSON-RPC + schema builder
+    bridge/                          # HTTP relay server (long-poll, localhost:8420)
+      bridge.js, todataurl.js, resolvemedia.js
+    schema.js, mcpserver.js, stdioservertransport.js
+    launch.js, ocr.js
 build/                               # output đã bundle/minify
 ```
 
@@ -116,7 +119,6 @@ build/                               # output đã bundle/minify
 ```bash
 node src/server/index.js     # MCP server đọc thẳng từ src/
 # Chrome → chrome://extensions → Load unpacked → chọn src/browser/
-# Click icon extension để mở dashboard
 ```
 
 ### Install
@@ -141,13 +143,13 @@ Output:
 ### Test
 
 ```bash
-npm test                                                 # extension smoke tests
+npm test                                                       # extension smoke tests
 FACEBOOK_COOKIES=$(node scripts/extractcookies.js) npm test   # + real Facebook E2E
 ```
 
 `extractcookies.js` reads from the local Chromium profile — log in to Facebook via `scripts/startnovnc.sh` first (server mode only). See `--server` install above.
 
-### Cấu hình MCP Client (Claude Desktop)
+### Cấu hình MCP Client
 
 ```json
 {
@@ -162,24 +164,12 @@ FACEBOOK_COOKIES=$(node scripts/extractcookies.js) npm test   # + real Facebook 
 
 ## Biến môi trường
 
-Hiện tại không cần biến môi trường nào — port relay (`8420`) được hardcode trong `bridge.js`.
-
 | Biến | Mặc định | Mục đích |
 |---|---|---|
 | `SOCIALMCP_CHROMIUM` | tự detect | Đường dẫn Chromium binary cho auto-launch |
 
 Auto-detect theo thứ tự: `/usr/lib/chromium/chromium` → `/usr/bin/chromium-browser` → `/usr/bin/google-chrome` → macOS Chrome.
 
-> **Farm setup** (kế hoạch): mỗi browser profile chạy một extension riêng; mỗi MCP server instance dùng port khác nhau.
-
-Xem chi tiết trong [docs/plugin-dev-guide.md](docs/plugin-dev-guide.md). Tóm tắt:
-
-1. Tạo `src/browser/platform/<id>/` theo cấu trúc giống `facebook/`.
-2. Thêm vào `src/browser/plugins.js`.
-3. Thêm entry `content_scripts` + `host_permissions` vào `src/browser/manifest.json` (cho dev mode — prod build tự generate từ `hosts.js`).
-
-`build.js` tự động scan thư mục `src/browser/platform/*/plugin.js` — không cần sửa build script.
-
-Các id `x`, `instagram`, `threads` đã được khai báo sẵn trong schema MCP — chỉ cần thêm plugin tương ứng là dùng được.
+Port relay (`8420`) được hardcode trong `bridge/bridge.js`.
 
 > ⚠️ **Lưu ý:** MCP tool calls sẽ **timeout** nếu extension chưa được load và kết nối với relay (`localhost:8420`). MCP server tự động launch Chromium nếu không thấy extension kết nối trong 5 giây — cần có `build/browser/` (`npm run build:ext`) và Chromium được cài. Đặt `SOCIALMCP_CHROMIUM` nếu Chromium không tự detect được.

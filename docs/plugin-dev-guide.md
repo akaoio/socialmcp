@@ -8,6 +8,237 @@ This guide is the single source of truth for adding new platforms and features. 
 ┌─────────────────────────────────────────────────────────────────┐
 │ Core (platform-agnostic)                                        │
 │   src/browser/background/   — service-worker host               │
+│   src/browser/builtin/      — platform-agnostic action handlers │
+│   src/browser/common/       — shared utilities                  │
+│   src/browser/plugins.js    — central registry                  │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │ knows only the plugin manifest interface
+┌──────────────────────▼──────────────────────────────────────────┐
+│ Plugin (self-contained)                                         │
+│   src/browser/platform/<id>/                                    │
+│     plugin.js          ← THE manifest (default export)          │
+│     hosts.js           ← URL substrings                         │
+│     content.js         ← content-script entry                   │
+│     background/        ← one file per public action             │
+│     <feature>/         ← grouped DOM logic + own selectors.js   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**The core never knows the word `facebook`.** Test: grep the strings `facebook`, `x`, `instagram`, `threads` under `src/browser/{background,builtin,common}/` — must return zero matches.
+
+## Hard rules (non-negotiable)
+
+1. **Naming.** Function names, file names, and exported identifiers are single lowercase words from `[a-z]`. No camelCase, no underscores, no multi-word names. Filename matches the function it exports (`post.js` exports `post`).
+2. **Feature = folder. Function = file.** Every feature is its own folder. Every function is its own file with a matching name. A file containing two exported functions is a violation.
+3. **Platform code stays in `platform/<id>/`.** Never reach back into core from a plugin to add platform-specific behavior to core files. If core needs an extension point, redesign the manifest.
+4. **No shared `selectors.js` at the platform root.** Each feature folder owns its own `selectors.js`. This prevents a single file from ballooning.
+5. **Public action names = MCP tool names.** The keys of `plugin.background` are what `bridge.send(platform, action, params)` will look up — they must match the MCP tool name (`post`, `scan`, …). Internal action names that travel between background and content script (e.g. `postpage`, `switchpage`, `getpages`) are private to the plugin and never reach an external caller.
+6. **Storage keys are plugin-scoped.** Use `chrome.storage.local` keys prefixed with the plugin id (e.g. `facebook:pages`). Never use bare keys like `pages` that could collide between plugins.
+
+## Adding a new platform
+
+### 1. Create the folder
+
+```
+src/browser/platform/<id>/
+  plugin.js
+  hosts.js
+  content.js
+  background/
+  <feature>/
+```
+
+Pick `<id>` carefully — it appears in:
+- the MCP `platform` enum (`src/server/index.js`, already pre-populated with `facebook | x | instagram | threads`),
+- `chrome.storage.local` key prefixes,
+- folder names (must match the id exactly).
+
+### 2. `hosts.js`
+
+```js
+export const hosts = ['example.com'];
+```
+
+`hosts` is a list of URL substrings used by `background/findtab/findtab.js` to locate an owned tab. The build script also parses this file (regex) to derive `content_scripts.matches` and `host_permissions` in `manifest.json`.
+
+### 3. `plugin.js` — the manifest
+
+```js
+import { hosts } from './hosts.js';
+import { post }  from './background/post.js';
+
+export default {
+  id:    'example',
+  label: 'Example',
+  hosts,
+  background: { post },       // public action handlers (MCP tool names)
+};
+```
+
+Fields:
+| field | type | required | meaning |
+|-------|------|----------|---------|
+| `id` | string | yes | matches folder name + MCP `platform` enum |
+| `label` | string | yes | human-readable name |
+| `hosts` | string[] | yes | from `hosts.js` |
+| `url` | string | no | default landing URL opened when no matching tab is found; falls back to `https://<hosts[0]>` |
+| `background` | object | no | map of `<public-action> → (tab, params) => result` |
+
+### 4. Register the plugin
+
+`src/browser/plugins.js`:
+
+```js
+import facebook from './platform/facebook/plugin.js';
+import example  from './platform/example/plugin.js';
+export const plugins = [facebook, example];
+```
+
+The build script automatically picks up `src/browser/platform/<id>/` folders (it scans for `plugin.js`) — you do **not** need to edit `build.js`.
+
+### 5. Dev manifest
+
+For dev mode (load `src/browser/` as unpacked), add a `content_scripts` entry and `host_permissions` entry to `src/browser/manifest.json` matching your hosts. The production build regenerates `manifest.json` from `hosts.js` automatically — so this dev edit is the only manual step.
+
+## Adding a feature to an existing plugin
+
+A "feature" is a coherent slice of DOM logic (e.g. *post composing*, *page scanning*).
+
+### Folder layout
+
+```
+platform/<id>/<feature>/
+  <step>.js          ← one function per file (named to match)
+  selectors.js       ← CSS selectors local to this feature
+```
+
+### Selector discipline
+
+`selectors.js` contains only the selectors used inside the feature folder. Sibling files import it as `'./selectors.js'`. **Do not create a shared `selectors.js` higher up the tree.**
+
+Prefer `aria-label`, `role`, `data-testid` over class names — they survive UI refactors.
+
+### Wiring the feature into the content script
+
+`platform/<id>/content.js`:
+
+```js
+import { getpages }  from './scan/getpages.js';
+import { postpage }  from './post/postpage.js';
+import { switchpage } from './post/switchpage.js';
+
+const HANDLERS = { getpages, postpage, switchpage };
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  const handler = HANDLERS[msg.action];
+  if (!handler) { sendResponse({ error: `Unknown action: ${msg.action}` }); return false; }
+  handler(msg.params ?? {})
+    .then(result => sendResponse({ result }))
+    .catch(err   => sendResponse({ error: err.message }));
+  return true;
+});
+```
+
+`HANDLERS` keys are **internal** action names — they only need to match what the plugin's own background handlers send via `chrome.runtime.sendMessage`. They do not need to match MCP tool names.
+
+### Wiring a feature into background
+
+For each public action your plugin supports, add a file under `platform/<id>/background/`:
+
+```js
+// platform/example/background/post.js
+import { navigate }    from '../../../background/navigate.js';
+import { sendmessage } from '../../../background/sendmessage.js';
+
+export async function post(tab, params) {
+  if (params?.url) await navigate(tab.id, params.url);
+  const updated = await chrome.tabs.get(tab.id);
+  return sendmessage(updated.id, { action: 'postcomposer', params });
+}
+```
+
+Then expose it in `plugin.js`:
+
+```js
+import { post } from './background/post.js';
+export default {
+  // …
+  background: { post },
+};
+```
+
+Multi-step flows (navigate → switch → fill → submit) live entirely inside this file. The core never sees them.
+
+## Adding a builtin action
+
+Builtin actions run entirely in the service worker (no content script needed) via `chrome.scripting.executeScript`. They work for every platform automatically.
+
+```
+src/browser/builtin/<action>/
+  <action>.js        ← export async function <action>(tab, params) { ... }
+```
+
+Then register in `src/browser/background/dispatch.js`:
+
+```js
+import { myaction } from '../builtin/myaction/myaction.js';
+// add to BUILTINS map at the top
+```
+
+## Adding an MCP tool
+
+If the new tool maps to an existing public action:
+1. Implement `plugin.background.<action>` in every plugin that supports it.
+2. Add internal handler to the plugin's content script `HANDLERS` if needed.
+
+If the tool is brand new:
+1. Add `mcp.tool(name, desc, schema, handler)` in `src/server/index.js`.
+2. The tool's handler calls `bridge.send(platform, '<name>', params)`.
+3. Add handler in `src/browser/builtin/<name>/<name>.js` (if platform-agnostic) OR in each plugin's `background/<name>.js`.
+
+## The MCP-server-to-extension transport
+
+The transport is an **HTTP long-poll relay** on `localhost:8420`:
+- `src/server/bridge/bridge.js` — HTTP server; `send(platform, action, params)` queues a job and awaits the result.
+- `src/browser/background/peer.js` — service-worker loop; long-polls `GET /job`, calls `dispatch`, POSTs result to `POST /result/:id`.
+
+Tool calls will **timeout** (default 30 s) if the extension is not loaded and connected. No external dependencies — uses Node `http` built-in and the service worker's native `fetch`.
+
+## Build & test
+
+| command | what it does |
+|---------|--------------|
+| `npm run build:ext` | bundles extension into `build/browser/`; auto-discovers plugins; auto-generates `manifest.json` `content_scripts` + `host_permissions` |
+| `npm run build:server` | bundles MCP server into `build/server/index.js` |
+| `npm run build` | both |
+| `NODE_ENV=production node build.js` | enables esbuild minification |
+
+Dev cycle:
+1. Edit source.
+2. Reload the extension in `chrome://extensions` (Reload button on the Social MCP card).
+3. Watch the service-worker DevTools console for errors.
+
+## Drift checklist (run before every PR)
+
+- [ ] `grep -ri "facebook\|instagram\|threads\|\\bx\\b" src/browser/{background,builtin,common}/` returns nothing.
+- [ ] Every file in `src/browser/` is imported by at least one other file (or is an entry point listed in `manifest.json` / `build.js`).
+- [ ] Every `selectors.js` lives inside the feature folder that uses it; no platform-root `selectors.js`.
+- [ ] Every plugin's `background` keys match the MCP tool names that callers will use.
+- [ ] Every `chrome.storage.local` key starts with `<plugin-id>:`.
+- [ ] No file contains more than one exported function (each function = its own file).
+- [ ] Every feature is a folder (not a flat file in background/).
+- [ ] `npm run build:ext` passes.
+- [ ] A diary entry is added under `docs/diary/`.
+
+
+This guide is the single source of truth for adding new platforms and features. Follow it strictly to keep the architecture drift-free.
+
+## Mental model
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Core (platform-agnostic)                                        │
+│   src/browser/background/   — service-worker host               │
 │   src/browser/dashboard/    — UI shell                          │
 │   src/browser/common/       — shared utilities                  │
 │   src/browser/plugins.js    — central registry                  │
