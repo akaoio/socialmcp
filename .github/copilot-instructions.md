@@ -176,8 +176,21 @@ None right now. (Previous `SOCIALMCP_PORT` / `SOCIALMCP_SECRET` belonged to a re
 
 ## Testing
 
-No automated tests. Manual verification:
+Automated integration tests using Playwright (no mocks, all tests run against real systems):
 
+```bash
+npm test                                          # build ext + run all tests
+FACEBOOK_COOKIES=$(cat /tmp/fb_cookies.json) npm test   # include real Facebook E2E
+```
+
+**Test files:**
+- `tests/extension.spec.js` — extension loads, service worker starts, dashboard renders.
+- `tests/facebook.spec.js` — full production pipeline: dashboard "Scan pages" button → background dispatch → `scan.js` navigates real FB tab → manifest-injected content script → DOM parse → storage update. Skipped unless `FACEBOOK_COOKIES` is set.
+
+**Getting `FACEBOOK_COOKIES`:** log in to Facebook via the noVNC browser session, then run `scripts/extractcookies.js` (or manually: `python3 scripts/extractcookies.py`).
+
+**Manual verification:**
 1. **Server**: `node src/server/index.js` — starts the stdio MCP server; tool calls will throw until a transport is implemented.
 2. **Extension**: load `src/browser/` (or `build/browser/` after `npm run build:ext`) as an unpacked extension → open the dashboard via the extension action → use the panel to invoke plugin actions.
 3. **Tools**: `npx @modelcontextprotocol/inspector node src/server/index.js` — the schema lists every tool; calls will error until a transport is wired.
+

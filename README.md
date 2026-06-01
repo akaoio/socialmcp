@@ -122,7 +122,7 @@ node src/server/index.js     # MCP server đọc thẳng từ src/
 ### Build production
 
 ```bash
-npm install                  # rollup + plugins
+npm install                  # esbuild + @playwright/test
 npm run build                # build cả server lẫn extension
 npm run build:server         # chỉ bundle server
 npm run build:ext            # chỉ bundle extension
