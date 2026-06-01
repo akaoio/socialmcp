@@ -7,9 +7,11 @@
     "start": "node build/server/index.js",
     "build": "node build.js",
     "build:server": "node build.js server",
-    "build:ext": "node build.js ext"
+    "build:ext": "node build.js ext",
+    "test": "node build.js ext && playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "esbuild": "^0.28.0"
   }
 }
