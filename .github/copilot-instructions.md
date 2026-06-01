@@ -121,7 +121,9 @@ Uses only Node built-ins:
 |------|---------|----------|
 | `src/server/mcp.js` | MCP JSON-RPC server + zod-compatible `schema` builder | `@modelcontextprotocol/sdk` + `zod` |
 | `src/server/bridge.js` | HTTP relay server (long-poll RPC) | — |
-| `src/server/index.js` | Declares 9 MCP tools via `mcp.tool(name, desc, schema, handler)` | — |
+| `src/server/launch.js` | Auto-launch Chromium with isolated profile + extension | — |
+| `src/server/ocr.js` | Server-side OCR via `tesseract` CLI (used by `ocr` tool) | — |
+| `src/server/index.js` | Declares MCP tools via `mcp.tool(name, desc, schema, handler)` | — |
 
 There is no per-folder package.json. The root `package.json` has no runtime dependencies.
 
@@ -144,7 +146,18 @@ There is no per-folder package.json. The root `package.json` has no runtime depe
 
 Each tool takes a `platform` enum (`facebook | x | instagram | threads`) plus its own params, and calls `bridge.send(p, action, params)` wrapped in `reply()`.
 
-Current tools: `post`, `scan`.
+Current tools:
+
+| Tool | Action | Returns |
+|------|--------|---------|
+| `post` | `post` | post result |
+| `scan` | `scan` | list of managed Pages |
+| `screenshot` | `screenshot` (builtin) | MCP `image` content (PNG base64) |
+| `getdom` | `getdom` (builtin) | `{ html: "..." }` — full outerHTML |
+| `getaxstree` | `getaxstree` (builtin) | `{ tree: "..." }` — compact ARIA tree |
+| `ocr` | `screenshot` (builtin) → server OCR | `{ text: "..." }` — Tesseract output |
+
+**Builtin actions** (`screenshot`, `getdom`, `getaxstree`) are handled directly in `dispatch.js` before the plugin lookup — they work for every platform without any plugin handler. `ocr` calls `screenshot` via bridge, then runs `tesseract` server-side.
 
 To add a tool:
 1. Add `mcp.tool(...)` in `src/server/index.js`.
