@@ -174,20 +174,71 @@ The platform string in MCP must already be in `schema.enum([...])` in `src/serve
 
 None right now. (Previous `SOCIALMCP_PORT` / `SOCIALMCP_SECRET` belonged to a removed transport.)
 
+## Install — `install.sh`
+
+```bash
+./install.sh           # npm install + Playwright Chromium (any Linux dev)
+./install.sh --server  # above + noVNC stack + system Chromium + pycryptodome
+```
+
+**Base mode** (any Linux dev): installs npm packages and runs `playwright install chromium` + system deps so `npm test` works immediately.
+
+**Server mode** (`--server`): additionally installs via `apt`:
+- `xvfb`, `openbox`, `x11vnc`, `websockify`, `novnc` — headless display + VNC stack
+- `chromium` — system Chromium (Playwright's bundled Chromium crashes on ARM)
+- `python3-pycryptodome` — AES decryption for `scripts/extractcookies.js`
+- `tigervnc-tools` (`vncpasswd`)
+
+Also prompts to set a VNC password at `~/.vncpasswd` (first run only).
+
+## Scripts — `scripts/`
+
+| File | Purpose |
+|------|---------|
+| `scripts/startnovnc.sh` | Start the full noVNC stack; `--stop` tears it all down |
+| `scripts/extractcookies.js` | Decrypt Facebook cookies from Chromium profile → JSON |
+
+### `scripts/startnovnc.sh`
+
+```bash
+scripts/startnovnc.sh          # start: Xvfb → openbox → x11vnc → websockify/noVNC
+scripts/startnovnc.sh --stop   # stop all services
+```
+
+Access: `http://<host>:6080/vnc.html` (VNC password required).
+
+**noVNC stack on ARM (Orange Pi 5 / Armbian):**
+- Use system `/usr/lib/chromium/chromium`, not Playwright's bundled Chromium (crashes on ARM)
+- Required Chromium flags: `--no-sandbox --no-zygote --single-process --disable-dev-shm-usage --disable-gpu --disable-gpu-rasterization`
+- Use `x11vnc -noxdamage` — avoids `destroyed xdamage object` crash
+- Chromium may still crash periodically on ARM; restart it manually or re-run startnovnc.sh
+
+### `scripts/extractcookies.js`
+
+Reads `~/.config/chromium/Default/Cookies` (SQLite), decrypts AES-128-CBC cookies (key = PBKDF2("peanuts", "saltysalt", 1, 16), IV = 16 spaces), strips 32-byte prefix from plaintext, outputs JSON array of `{ name, value, domain, path, httpOnly, secure }`.
+
+```bash
+node scripts/extractcookies.js > /tmp/fb_cookies.json
+```
+
+Cookies expire in weeks — re-run after re-logging in via noVNC.
+
 ## Testing
 
 Automated integration tests using Playwright (no mocks, all tests run against real systems):
 
 ```bash
-npm test                                          # build ext + run all tests
-FACEBOOK_COOKIES=$(cat /tmp/fb_cookies.json) npm test   # include real Facebook E2E
+npm test                                                      # build ext + run all tests
+FACEBOOK_COOKIES=$(node scripts/extractcookies.js) npm test   # include real Facebook E2E
 ```
 
 **Test files:**
 - `tests/extension.spec.js` — extension loads, service worker starts, dashboard renders.
 - `tests/facebook.spec.js` — full production pipeline: dashboard "Scan pages" button → background dispatch → `scan.js` navigates real FB tab → manifest-injected content script → DOM parse → storage update. Skipped unless `FACEBOOK_COOKIES` is set.
 
-**Getting `FACEBOOK_COOKIES`:** log in to Facebook via the noVNC browser session, then run `scripts/extractcookies.js` (or manually: `python3 scripts/extractcookies.py`).
+**Getting `FACEBOOK_COOKIES`:** log in to Facebook via the noVNC browser session, then run `node scripts/extractcookies.js`.
+
+**Design principles:** no mocks, no fakes — every test exercises real production code paths end-to-end. `facebook.spec.js` proves the entire chain works on live Facebook.
 
 **Manual verification:**
 1. **Server**: `node src/server/index.js` — starts the stdio MCP server; tool calls will throw until a transport is implemented.

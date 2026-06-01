@@ -147,7 +147,7 @@ FACEBOOK_COOKIES=$(node scripts/extractcookies.js) npm test   # + real Facebook 
 
 `extractcookies.js` reads from the local Chromium profile — log in to Facebook via `scripts/startnovnc.sh` first (server mode only). See `--server` install above.
 
-
+### Cấu hình MCP Client (Claude Desktop)
 
 ```json
 {
