@@ -10,14 +10,12 @@
  * Each test sends { type: 'ui:dispatch', ... } from the dashboard context,
  * exactly the same message the dashboard UI sends when a user clicks a button.
  *
- * OCR test skipped when tesseract binary is absent.
  * Run: npm test -- --grep debug
  */
 import { test, expect, chromium } from '@playwright/test';
 import { join }                   from 'path';
 import { mkdtempSync, rmSync }    from 'fs';
 import { tmpdir }                 from 'os';
-import { execSync }               from 'child_process';
 
 const EXT = join(process.cwd(), 'build/browser');
 
@@ -40,11 +38,6 @@ async function call(dashPage, platform, action, params = {}) {
   return resp?.result;
 }
 
-function hasTesseract() {
-  try { execSync('which tesseract', { stdio: 'ignore' }); return true; }
-  catch { return false; }
-}
-
 let ctx, dash, eid, udir;
 
 test.beforeAll(async () => {
@@ -60,7 +53,6 @@ test.beforeAll(async () => {
   const sw = ctx.serviceWorkers()[0] ?? await ctx.waitForEvent('serviceworker');
   eid = sw.url().split('/')[2];
 
-  // Keep a dashboard page open — all tests send messages through it.
   dash = await ctx.newPage();
   await dash.goto(`chrome-extension://${eid}/dashboard/index.html`);
 });
@@ -71,14 +63,12 @@ test.afterAll(async () => {
 });
 
 test('screenshot: returns valid PNG data URL', async () => {
-  test.setTimeout(60_000); // first call creates a new facebook tab and waits for load
+  test.setTimeout(60_000);
   const result = await call(dash, 'facebook', 'screenshot');
 
   expect(typeof result.dataUrl).toBe('string');
   expect(result.dataUrl).toMatch(/^data:image\/png;base64,/);
-
-  const base64 = result.dataUrl.replace('data:image/png;base64,', '');
-  expect(base64.length).toBeGreaterThan(1000); // a real PNG is never tiny
+  expect(result.dataUrl.replace('data:image/png;base64,', '').length).toBeGreaterThan(1000);
 });
 
 test('getdom: returns real HTML document', async () => {
@@ -89,7 +79,6 @@ test('getdom: returns real HTML document', async () => {
   expect(result.html.length).toBeGreaterThan(500);
   expect(result.html.toLowerCase()).toContain('<html');
   expect(result.html.toLowerCase()).toContain('</html>');
-  // Any facebook.com page (login or feed) contains "facebook" in its content.
   expect(result.html.toLowerCase()).toContain('facebook');
 });
 
@@ -99,22 +88,16 @@ test('getaxstree: returns non-empty accessibility tree', async () => {
 
   expect(typeof result.tree).toBe('string');
   expect(result.tree).not.toBe('(empty)');
-  // Tree should contain at least one element with angle brackets.
   expect(result.tree).toMatch(/<[a-z]/);
 });
 
-test('ocr: extracts text from facebook tab via tesseract', async () => {
-  test.skip(!hasTesseract(), 'tesseract not installed — run ./install.sh --server');
+test('ocr: extracts text from screenshot via tesseract.js', async () => {
   test.setTimeout(120_000);
 
-  const result = await call(dash, 'facebook', 'screenshot');
-  // OCR is server-side — call it directly via the MCP bridge path would need
-  // the MCP server running. Instead, test ocr.js unit directly here.
+  const { dataUrl } = await call(dash, 'facebook', 'screenshot');
   const { ocr } = await import('../src/server/ocr.js');
-  const text = await ocr(result.dataUrl);
+  const text = await ocr(dataUrl);
 
   expect(typeof text).toBe('string');
-  expect(text.length).toBeGreaterThan(0);
-  // Facebook login or feed page always has visible text.
   expect(text.length).toBeGreaterThan(3);
 });

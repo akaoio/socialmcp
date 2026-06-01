@@ -39,7 +39,6 @@ sudo apt-get install -y \
   websockify \
   novnc \
   chromium \
-  tesseract-ocr \
   python3-pycryptodome \
   tigervnc-tools
 
