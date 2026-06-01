@@ -5,7 +5,7 @@ import { finddialog } from './finddialog.js';
 import { dismisswa }  from './dismisswa.js';
 import { findtrigger } from './findtrigger.js';
 
-export async function postpage({ content = '', media = [], image } = {}) {
+export async function postpage({ content = '', media = [], image, dryrun = false } = {}) {
   const files = media?.length ? media : (image ? [image] : []);
   await sleep(2000);
   dismisswa();
@@ -80,6 +80,7 @@ export async function postpage({ content = '', media = [], image } = {}) {
     await sleep(400);
   }
   if (!postbtn) throw new Error('Post button not found');
+  if (dryrun) return { success: true, dryrun: true };
   postbtn.click();
   await sleep(4000);
   dismisswa();

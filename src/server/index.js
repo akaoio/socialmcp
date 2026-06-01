@@ -18,6 +18,8 @@
 import { McpServer, StdioServerTransport, schema } from './mcp.js';
 import Bridge from './bridge.js';
 import { ocr } from './ocr.js';
+import { readFileSync } from 'node:fs';
+import { extname } from 'node:path';
 
 const bridge = new Bridge().start();
 const mcp = new McpServer({ name: 'socialmcp', version: '1.0.0' });
@@ -27,6 +29,16 @@ const platform = schema.enum(['facebook', 'x', 'instagram', 'threads']);
 
 function reply(r) {
   return { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }] };
+}
+
+// Convert a local file path to a base64 data URL (only for local paths).
+// The content script fetches media via data URL — it cannot access the filesystem.
+function mediatourl(p) {
+  if (p.startsWith('data:') || p.startsWith('http')) return p;
+  const mimes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+                  '.gif': 'image/gif', '.webp': 'image/webp', '.mp4': 'video/mp4' };
+  const mime = mimes[extname(p).toLowerCase()] || 'application/octet-stream';
+  return `data:${mime};base64,${readFileSync(p).toString('base64')}`;
 }
 
 // ── Tools ────────────────────────────────────────────────────────────────────
@@ -42,7 +54,7 @@ mcp.tool(
       .describe('File paths or URLs of images/videos to attach'),
   },
   async ({ platform: p, page_url, content, media }) =>
-    reply(await bridge.send(p, 'post', { page_url, content, media }))
+    reply(await bridge.send(p, 'post', { page_url, content, media: (media ?? []).map(mediatourl) }))
 );
 
 mcp.tool(

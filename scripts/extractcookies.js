@@ -44,7 +44,7 @@ for name, enc, host, path, httponly, secure in rows:
     result.append({
         'name':     name,
         'value':    value,
-        'domain':   host.lstrip('.'),
+        'domain':   host if host.startswith('.') else '.' + host,
         'path':     path,
         'httpOnly': bool(httponly),
         'secure':   bool(secure),
