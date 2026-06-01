@@ -1,7 +1,9 @@
 /**
  * Integration tests — Social MCP Chrome extension
  *
- * Tier 1: Extension loads and the background → dispatch message chain works.
+ * Proves the extension loads correctly and the dashboard UI renders.
+ * Full pipeline (dispatch → background → content script → real FB) is
+ * covered by facebook.spec.js.
  *
  * Uses --headless=new so no display server is required.
  */
@@ -33,8 +35,6 @@ test.afterAll(async () => {
   try { rmSync(udir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-// --- Tier 1: extension structure and message chain ---------------------------
-
 test('service worker starts with correct url', () => {
   expect(sw.url()).toMatch(/chrome-extension:\/\/.+\/background\/index\.js/);
 });
@@ -43,22 +43,6 @@ test('dashboard renders facebook plugin', async () => {
   const page = await ctx.newPage();
   await page.goto(`chrome-extension://${eid}/dashboard/index.html`);
   await expect(page.getByRole('button', { name: 'Facebook' })).toBeVisible();
-  await page.close();
-});
-
-test('message chain: unknown platform returns structured error', async () => {
-  const page = await ctx.newPage();
-  await page.goto(`chrome-extension://${eid}/dashboard/index.html`);
-  await page.waitForTimeout(500);
-
-  const resp = await page.evaluate(() => new Promise(resolve =>
-    chrome.runtime.sendMessage(
-      { type: 'ui:dispatch', platform: 'nope', action: 'scan', params: {} },
-      resolve,
-    )
-  ));
-
-  expect(resp).toEqual({ error: 'Unknown platform: nope' });
   await page.close();
 });
 
