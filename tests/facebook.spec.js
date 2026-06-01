@@ -1,15 +1,24 @@
 /**
- * Tier 3: Real Facebook integration — scan only, read-only.
+ * Real Facebook E2E tests — proves the full production pipeline works.
  *
  * Skipped unless FACEBOOK_COOKIES is set (JSON array of cookie objects).
- * Never runs post/write operations to avoid accidental side effects.
+ * Read-only — never posts or writes anything.
  *
- * Usage:
- *   FACEBOOK_COOKIES='[{"name":"c_user","value":"...","domain":".facebook.com",...}]' \
- *     playwright test tests/facebook.spec.js
+ * Tests the complete production path:
+ *   dashboard "Scan pages" click
+ *   → dashboard/dispatch.js chrome.runtime.sendMessage
+ *   → background/onmessage.js
+ *   → background/dispatch.js
+ *   → facebook/background/scan.js  (navigates FB tab, waits for load)
+ *   → background/sendmessage.js
+ *   → facebook/content.js HANDLERS.getpages  (manifest-injected, not manual)
+ *   → DOM parse → result → dashboard UI updated
  *
- * Obtain cookies: log in to facebook.com in Chrome → DevTools → Application →
- *   Cookies → export as JSON (or use a browser extension like EditThisCookie).
+ * Get cookies:
+ *   node scripts/extractcookies.js   (or see docs/diary for manual steps)
+ *
+ * Run:
+ *   FACEBOOK_COOKIES=$(cat /tmp/fb_cookies.json) npm test -- --grep facebook
  */
 import { test, expect, chromium } from '@playwright/test';
 import { join }                   from 'path';
@@ -23,7 +32,7 @@ const COOKIES = process.env.FACEBOOK_COOKIES
 
 test.skip(!COOKIES, 'set FACEBOOK_COOKIES env var to enable real-Facebook tests');
 
-let ctx, sw, eid, udir;
+let ctx, eid, udir;
 
 test.beforeAll(async () => {
   udir = mkdtempSync(join(tmpdir(), 'socialmcp-fb-'));
@@ -35,11 +44,19 @@ test.beforeAll(async () => {
       `--load-extension=${EXT}`,
     ],
   });
-  sw  = ctx.serviceWorkers()[0] ?? await ctx.waitForEvent('serviceworker');
+  const sw = ctx.serviceWorkers()[0] ?? await ctx.waitForEvent('serviceworker');
   eid = sw.url().split('/')[2];
 
-  // Inject session cookies before navigating.
+  // Inject session cookies, then open Facebook so manifest injects content script.
   await ctx.addCookies(COOKIES);
+  const page = await ctx.newPage();
+  await page.goto('https://www.facebook.com', { waitUntil: 'domcontentloaded' });
+
+  // Fail fast if not logged in.
+  if (await page.locator('[name="email"]').count()) {
+    throw new Error('Not logged in — check FACEBOOK_COOKIES');
+  }
+  await page.close();
 });
 
 test.afterAll(async () => {
@@ -47,46 +64,43 @@ test.afterAll(async () => {
   try { rmSync(udir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-test('scan returns facebook pages for authenticated user', async () => {
-  test.setTimeout(60_000);
-
-  const page = await ctx.newPage();
-  await page.goto('https://www.facebook.com/pages/?category=your_pages');
-
-  // Verify we are logged in: no email/password form present.
-  await page.waitForLoadState('domcontentloaded');
-  const hasLoginForm = await page.locator('[name="email"]').count();
-  if (hasLoginForm) throw new Error('Not logged in — check FACEBOOK_COOKIES');
+test('scan: dashboard button triggers full pipeline and returns real pages', async () => {
+  test.setTimeout(90_000); // navigate(3500) + getpages sleep(3500) + FB network
 
   const dash = await ctx.newPage();
   await dash.goto(`chrome-extension://${eid}/dashboard/index.html`);
 
-  // Get the facebook tab id from extension context.
-  const tabId = await dash.evaluate(async () => {
-    const tabs = await chrome.tabs.query({ url: '*://*.facebook.com/*' });
-    return tabs[0]?.id ?? null;
+  // Activate the Facebook plugin panel.
+  await dash.getByRole('button', { name: 'Facebook' }).click();
+  await expect(dash.locator('#fb-scan')).toBeVisible();
+
+  // Click "Scan pages" — this triggers the full production dispatch chain.
+  await dash.locator('#fb-scan').click();
+
+  // Wait for scan to finish: button returns to "Scan pages" text.
+  await expect(dash.locator('#fb-scan')).toHaveText('Scan pages', { timeout: 60_000 });
+
+  // Assert log shows successful result (not an error).
+  const logText = await dash.locator('#fb-log').textContent();
+  expect(logText).toMatch(/Found \d+ page\(s\)\./);
+  expect(logText).not.toContain('Error');
+
+  // Assert pages persisted to storage and match what the UI shows.
+  const stored = await dash.evaluate(async () => {
+    const r = await chrome.storage.local.get(['facebook:pages']);
+    return r['facebook:pages'] ?? [];
   });
-  expect(tabId).not.toBeNull();
+  expect(Array.isArray(stored)).toBe(true);
+  expect(stored.length).toBeGreaterThan(0);
+  for (const p of stored) {
+    expect(p).toHaveProperty('name');
+    expect(p).toHaveProperty('url');
+    expect(p.url).toContain('facebook.com/');
+  }
 
-  // Run scan via background dispatch.
-  const result = await dash.evaluate(async (tid) => {
-    // Inject content script (it may already be injected — that's fine).
-    await chrome.scripting.executeScript({
-      target: { tabId: tid },
-      files:  ['facebook/content.js'],
-    }).catch(() => { /* already injected */ });
+  console.log(`Scan found ${stored.length} page(s):`);
+  for (const p of stored) console.log(`  • ${p.name}  ${p.url}`);
 
-    return new Promise(resolve =>
-      chrome.tabs.sendMessage(tid, { action: 'getpages', params: {} }, resolve),
-    );
-  }, tabId);
-
-  expect(result?.result?.pages).toBeDefined();
-  expect(Array.isArray(result.result.pages)).toBe(true);
-
-  console.log(`Found ${result.result.pages.length} Facebook page(s):`);
-  for (const p of result.result.pages) console.log(`  • ${p.name}  ${p.url}`);
-
-  await page.close();
   await dash.close();
 });
+

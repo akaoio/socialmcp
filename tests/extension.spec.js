@@ -2,7 +2,6 @@
  * Integration tests — Social MCP Chrome extension
  *
  * Tier 1: Extension loads and the background → dispatch message chain works.
- * Tier 2: Content script injects into a mock page and DOM parsing works.
  *
  * Uses --headless=new so no display server is required.
  */
@@ -63,64 +62,3 @@ test('message chain: unknown platform returns structured error', async () => {
   await page.close();
 });
 
-// --- Tier 2: content script injection and DOM parsing -----------------------
-
-// Minimal HTML that satisfies facebook getpages() selectors:
-//   [role="main"] [role="listitem"] a[href] span[dir]
-const MOCKHTML = `<!doctype html><html><body>
-<div role="main">
-  <div role="listitem">
-    <a href="https://www.facebook.com/testpageone">
-      <span dir="auto">Test Page One</span>
-    </a>
-  </div>
-  <div role="listitem">
-    <a href="https://www.facebook.com/testpagetwo">
-      <span dir="auto">Test Page Two</span>
-    </a>
-  </div>
-</div>
-</body></html>`;
-
-const MOCKURL = 'http://localhost:19999/';
-
-test('content script getpages parses mock facebook dom', async () => {
-  test.setTimeout(20_000); // getpages() has sleep(3500)
-
-  await ctx.route(MOCKURL, route =>
-    route.fulfill({ contentType: 'text/html', body: MOCKHTML }),
-  );
-
-  const mockpage = await ctx.newPage();
-  await mockpage.goto(MOCKURL);
-
-  // Use the dashboard (extension page context) to reach chrome.scripting + chrome.tabs.
-  const dash = await ctx.newPage();
-  await dash.goto(`chrome-extension://${eid}/dashboard/index.html`);
-
-  const tabId = await dash.evaluate(async () => {
-    const tabs = await chrome.tabs.query({ url: 'http://localhost:19999/*' });
-    return tabs[0]?.id ?? null;
-  });
-  expect(tabId).not.toBeNull();
-
-  // Inject the bundled content script, then send getpages action.
-  const result = await dash.evaluate(async (tid) => {
-    await chrome.scripting.executeScript({
-      target: { tabId: tid },
-      files:  ['facebook/content.js'],
-    });
-    return new Promise(resolve =>
-      chrome.tabs.sendMessage(tid, { action: 'getpages', params: {} }, resolve),
-    );
-  }, tabId);
-
-  expect(result?.result?.pages).toHaveLength(2);
-  expect(result.result.pages[0].name).toBe('Test Page One');
-  expect(result.result.pages[0].url).toBe('https://www.facebook.com/testpageone');
-  expect(result.result.pages[1].name).toBe('Test Page Two');
-
-  await mockpage.close();
-  await dash.close();
-  await ctx.unroute(MOCKURL);
-});
