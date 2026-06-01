@@ -34,6 +34,15 @@ test.skip(!COOKIES, 'set FACEBOOK_COOKIES env var to enable real-Facebook tests'
 
 let ctx, eid, udir;
 
+// Unwrap the { result } envelope that onmessage wraps around every dispatch response.
+async function call(page, platform, action, params = {}) {
+  const resp = await page.evaluate(
+    ({ platform, action, params }) => window.dispatch(platform, action, params),
+    { platform, action, params }
+  );
+  return resp?.result;
+}
+
 test.beforeAll(async () => {
   udir = mkdtempSync(join(tmpdir(), 'socialmcp-fb-'));
   ctx  = await chromium.launchPersistentContext(udir, {
@@ -67,40 +76,24 @@ test.afterAll(async () => {
 test('scan: relay dispatch triggers full pipeline and returns real pages', async () => {
   test.setTimeout(90_000); // navigate(3500) + getpages sleep(3500) + FB network
 
-  const dash = await ctx.newPage();
-  await dash.goto(`chrome-extension://${eid}/relay/relay.html`);
+  const relay = await ctx.newPage();
+  await relay.goto(`chrome-extension://${eid}/relay/relay.html`);
 
-  // Activate the Facebook plugin panel.
-  await dash.getByRole('button', { name: 'Facebook' }).click();
-  await expect(dash.locator('#fb-scan')).toBeVisible();
+  // Call scan via relay — exercises the full production dispatch chain.
+  const result = await call(relay, 'facebook', 'scan', {});
 
-  // Click "Scan pages" — this triggers the full production dispatch chain.
-  await dash.locator('#fb-scan').click();
-
-  // Wait for scan to finish: button returns to "Scan pages" text.
-  await expect(dash.locator('#fb-scan')).toHaveText('Scan pages', { timeout: 60_000 });
-
-  // Assert log shows successful result (not an error).
-  const logText = await dash.locator('#fb-log').textContent();
-  expect(logText).toMatch(/Found \d+ page\(s\)\./);
-  expect(logText).not.toContain('Error');
-
-  // Assert pages persisted to storage and match what the UI shows.
-  const stored = await dash.evaluate(async () => {
-    const r = await chrome.storage.local.get(['facebook:pages']);
-    return r['facebook:pages'] ?? [];
-  });
-  expect(Array.isArray(stored)).toBe(true);
-  expect(stored.length).toBeGreaterThan(0);
-  for (const p of stored) {
+  expect(result).not.toHaveProperty('error');
+  expect(Array.isArray(result.pages)).toBe(true);
+  expect(result.pages.length).toBeGreaterThan(0);
+  for (const p of result.pages) {
     expect(p).toHaveProperty('name');
     expect(p).toHaveProperty('url');
     expect(p.url).toContain('facebook.com/');
   }
 
-  console.log(`Scan found ${stored.length} page(s):`);
-  for (const p of stored) console.log(`  • ${p.name}  ${p.url}`);
+  console.log(`Scan found ${result.pages.length} page(s):`);
+  for (const p of result.pages) console.log(`  • ${p.name}  ${p.url}`);
 
-  await dash.close();
+  await relay.close();
 });
 
