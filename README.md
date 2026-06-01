@@ -4,7 +4,7 @@ Social MCP là một lớp abstraction cho phép AI agents thao tác mạng xã 
 
 Bao gồm hai thành phần:
 - **Chrome Extension (MV3)**: kiến trúc plugin. Background là khung dùng chung; mỗi platform là một plugin tự chứa.
-- **Node MCP Server**: expose MCP tools cho AI agents. Kết nối với extension qua HTTP long-poll relay (`bridge/bridge.js` ↔ `peer.js`) trên `localhost:8420`.
+- **Node MCP Server**: expose MCP tools cho AI agents. Kết nối với extension qua HTTP long-poll relay (`bridge/bridge.js` ↔ `peer.js`) trên `localhost:8765`.
 
 ## Vì sao cần Social MCP
 
@@ -22,7 +22,7 @@ AI Agent (Claude, GPT…)
     │  stdio · MCP protocol
     ▼
 Node MCP Server  (src/server/index.js)
-    │  HTTP long-poll relay  localhost:8420  (bridge/bridge.js ↔ peer.js)
+    │  HTTP long-poll relay  localhost:8765  (bridge/bridge.js ↔ peer.js)
     ▼
 Extension Background  (src/browser/background/index.js)
     │  reads src/browser/plugins.js → dispatch by platform id
@@ -33,8 +33,6 @@ Content Script  (src/browser/platform/<id>/content.js)
     ▼
 facebook.com / x.com / instagram.com / threads.net
 ```
-
-`src/browser/relay/` là trang extension tối giản (`relay.html` + `relay.js`) dùng bởi test automation để gửi dispatch messages vào background mà không cần UI.
 
 ## Plugin Architecture
 
@@ -95,8 +93,6 @@ src/
       screenshot/screenshot.js
       getdom/getdom.js
       getaxstree/getaxstree.js
-    relay/                           # minimal test page
-      relay.html, relay.js
     platform/
       facebook/
         plugin.js, hosts.js, content.js
@@ -105,10 +101,11 @@ src/
         scan/                        # quét danh sách Page + selectors.js riêng
   server/
     index.js                         # MCP server (stdio transport)
-    bridge/                          # HTTP relay server (long-poll, localhost:8420)
+    bridge/                          # HTTP relay server (long-poll, localhost:8765)
       bridge.js, todataurl.js, resolvemedia.js
     schema.js, mcpserver.js, stdioservertransport.js
-    launch.js, ocr.js
+    launch.js
+    ocr/ocr.js                       # Tesseract OCR
 build/                               # output đã bundle/minify
 ```
 
@@ -143,11 +140,10 @@ Output:
 ### Test
 
 ```bash
-npm test                                                       # extension smoke tests
-FACEBOOK_COOKIES=$(node scripts/extractcookies.js) npm test   # + real Facebook E2E
+npm test          # build ext + run all tests (cookies auto-detected from Chromium profile)
 ```
 
-`extractcookies.js` reads from the local Chromium profile — log in to Facebook via `scripts/startnovnc.sh` first (server mode only). See `--server` install above.
+`tests/cookies.js` tự động chạy `scripts/extractcookies.js` để lấy cookie từ local Chromium profile. Đăng nhập Facebook qua `scripts/startnovnc.sh` (chế độ server) trước khi chạy test. Xem hướng dẫn `--server` ở trên.
 
 ### Cấu hình MCP Client
 
@@ -170,6 +166,6 @@ FACEBOOK_COOKIES=$(node scripts/extractcookies.js) npm test   # + real Facebook 
 
 Auto-detect theo thứ tự: `/usr/lib/chromium/chromium` → `/usr/bin/chromium-browser` → `/usr/bin/google-chrome` → macOS Chrome.
 
-Port relay (`8420`) được hardcode trong `bridge/bridge.js`.
+Port relay (`8765`) được hardcode trong `bridge/bridge.js`.
 
-> ⚠️ **Lưu ý:** MCP tool calls sẽ **timeout** nếu extension chưa được load và kết nối với relay (`localhost:8420`). MCP server tự động launch Chromium nếu không thấy extension kết nối trong 5 giây — cần có `build/browser/` (`npm run build:ext`) và Chromium được cài. Đặt `SOCIALMCP_CHROMIUM` nếu Chromium không tự detect được.
+> ⚠️ **Lưu ý:** MCP tool calls sẽ **timeout** nếu extension chưa được load và kết nối với relay (`localhost:8765`). MCP server tự động launch Chromium nếu không thấy extension kết nối trong 5 giây — cần có `build/browser/` (`npm run build:ext`) và Chromium được cài. Đặt `SOCIALMCP_CHROMIUM` nếu Chromium không tự detect được.
