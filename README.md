@@ -119,10 +119,16 @@ node src/server/index.js     # MCP server đọc thẳng từ src/
 # Click icon extension để mở dashboard
 ```
 
-### Build production
+### Install
 
 ```bash
-npm install                  # esbuild + @playwright/test
+./install.sh           # npm install + Playwright Chromium (any Linux dev)
+./install.sh --server  # above + noVNC stack + cookie tools (headless server)
+```
+
+### Build
+
+```bash
 npm run build                # build cả server lẫn extension
 npm run build:server         # chỉ bundle server
 npm run build:ext            # chỉ bundle extension
@@ -132,7 +138,16 @@ Output:
 - `build/server/index.js` — Node bundle (self-contained), chạy bằng `npm start`.
 - `build/browser/` — Extension đã minify; load unpacked hoặc pack `.crx` từ thư mục này.
 
-### Cấu hình MCP Client (Claude Desktop)
+### Test
+
+```bash
+npm test                                                 # extension smoke tests
+FACEBOOK_COOKIES=$(node scripts/extractcookies.js) npm test   # + real Facebook E2E
+```
+
+`extractcookies.js` reads from the local Chromium profile — log in to Facebook via `scripts/startnovnc.sh` first (server mode only). See `--server` install above.
+
+
 
 ```json
 {
