@@ -5,7 +5,7 @@
  *
  *   test stdin (JSON-RPC tools/call post)
  *   → MCP server (index.js)
- *   → bridge.send() → HTTP relay localhost:8420
+ *   → bridge.send() → HTTP relay localhost:8765
  *   → peer.js GET /job
  *   → dispatch → facebook/background/post.js
  *     → navigate /pages/?category=your_pages
@@ -15,38 +15,29 @@
  *   → POST /result/:id
  *   → MCP server stdout (JSON-RPC response)
  *
+ * Default target page: https://www.facebook.com/akaoofficial (AKAO)
+ * Override with FACEBOOK_POST_PAGE env var.
+ *
+ * Fixture images at tests/fixtures/ are attached by default.
+ * Override with FACEBOOK_POST_MEDIA (comma-separated paths) to use different images.
+ *
  * Two modes:
  *
- *   Dry-run (default when FACEBOOK_POST_PAGE is set):
+ *   Dry-run (default):
  *     Runs the full flow but stops BEFORE clicking "Post".
- *     Proves the compose dialog opens, text is typed, and the Post
- *     button is found and enabled — without publishing anything.
+ *     Proves the compose dialog opens, text is typed, images are attached,
+ *     and the Post button is found and enabled — without publishing anything.
  *
- *   Real post (also set FACEBOOK_ACTUALLY_POST=true):
- *     Completes the post including any media. Use on a private test page
- *     with no audience (e.g. the AKAO page).
+ *   Real post (set FACEBOOK_ACTUALLY_POST=true):
+ *     Completes the post. Use only on a private test page.
  *
- * Required env vars:
- *   FACEBOOK_COOKIES      — JSON cookie array (node scripts/extractcookies.js)
- *   FACEBOOK_POST_PAGE    — Full URL of the Page to post to
- *                           e.g. https://www.facebook.com/akaoofficial
- *
- * Optional:
- *   FACEBOOK_ACTUALLY_POST=true  — actually click Post (default: dry-run)
- *   FACEBOOK_POST_MEDIA          — comma-separated absolute file paths to attach
- *                                  e.g. /path/to/img1.png,/path/to/img2.jpg
+ * Skipped if no cookies are available (log in to Chromium first).
  *
  * Run:
- *   FACEBOOK_COOKIES=$(node scripts/extractcookies.js) \
- *   FACEBOOK_POST_PAGE=https://www.facebook.com/yourpage \
  *   npm test -- --grep post
  *
- *   # Real post with image:
- *   FACEBOOK_ACTUALLY_POST=true \
- *   FACEBOOK_POST_MEDIA=/abs/path/to/image.png \
- *   FACEBOOK_COOKIES=$(node scripts/extractcookies.js) \
- *   FACEBOOK_POST_PAGE=https://www.facebook.com/akaoofficial \
- *   npm test -- --grep post
+ *   # Real post:
+ *   FACEBOOK_ACTUALLY_POST=true npm test -- --grep post
  */
 import { test, expect, chromium }           from '@playwright/test';
 import { join, extname }                    from 'path';
@@ -54,6 +45,8 @@ import { mkdtempSync, rmSync, readFileSync } from 'fs';
 import { tmpdir }                           from 'os';
 import { startmcp }                         from './mcpclient.js';
 import { getcookies }                       from './cookies.js';
+
+const FIXTURES = join(process.cwd(), 'tests/fixtures');
 
 // Convert a local file path to a base64 data URL so the content script
 // can fetch it (content scripts cannot access the local filesystem directly).
@@ -66,21 +59,24 @@ function todataurl(filePath) {
 
 const EXT      = join(process.cwd(), 'build/browser');
 const COOKIES  = getcookies();
-const PAGE_URL = process.env.FACEBOOK_POST_PAGE   ?? null;
+const PAGE_URL = process.env.FACEBOOK_POST_PAGE ?? 'https://www.facebook.com/akaoofficial';
 const REALLY   = process.env.FACEBOOK_ACTUALLY_POST === 'true';
-const MEDIA    = (process.env.FACEBOOK_POST_MEDIA ? process.env.FACEBOOK_POST_MEDIA.split(',').map(s => s.trim()) : [])
-                   .map(p => p.startsWith('data:') || p.startsWith('http') ? p : todataurl(p));
 
-test.skip(!COOKIES || !PAGE_URL,
-  !COOKIES ? 'no Facebook cookies — log in to Chromium first or set FACEBOOK_COOKIES'
-           : 'set FACEBOOK_POST_PAGE to enable post tests');
+// Use fixture images by default; FACEBOOK_POST_MEDIA overrides with custom paths.
+const MEDIA = (
+  process.env.FACEBOOK_POST_MEDIA
+    ? process.env.FACEBOOK_POST_MEDIA.split(',').map(s => s.trim())
+    : ['image1.png', 'image2.png', 'image3.png'].map(f => join(FIXTURES, f))
+).map(p => p.startsWith('data:') || p.startsWith('http') ? p : todataurl(p));
+
+test.skip(!COOKIES, 'no Facebook cookies — log in to Chromium first or set FACEBOOK_COOKIES');
 
 let ctx, mcp, udir;
 
 test.beforeAll(async () => {
   udir = mkdtempSync(join(tmpdir(), 'socialmcp-post-'));
 
-  // Spawn MCP server first (bridge starts on :8420)
+  // Spawn MCP server first (bridge starts on :8765)
   mcp = await startmcp();
 
   // Launch Chromium with extension (peer.js connects to bridge)
@@ -113,29 +109,31 @@ test.afterAll(async () => {
   try { rmSync(udir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-test('post: full MCP pipeline — compose dialog opens, content typed, Post button enabled', async () => {
+test('post: dry-run — compose dialog opens, 3 images attached, Post button enabled', async () => {
   test.setTimeout(120_000);
 
-  const content = `Test post — socialmcp ${REALLY ? 'REAL' : 'dry-run'} ${new Date().toISOString()}`;
+  const content = `socialmcp test ${new Date().toISOString()}`;
 
   const result = await mcp.call('post', {
     platform: 'facebook',
     page_url: PAGE_URL,
     content,
-    media:   MEDIA,
-    dryrun:  !REALLY,
+    media:  REALLY ? MEDIA : MEDIA,  // always attach fixture images
+    dryrun: !REALLY,
   });
 
   expect(result).toMatchObject({ success: true });
 
   if (!REALLY) {
     expect(result.dryrun).toBe(true);
-    console.log(`✓ Dry-run: compose dialog opened, Post button found.`);
+    console.log(`✓ Dry-run on ${PAGE_URL}`);
     console.log(`  Content: "${content}"`);
-    console.log('  To publish for real: set FACEBOOK_ACTUALLY_POST=true');
+    console.log(`  Images:  ${MEDIA.length} fixture image(s) attached`);
+    console.log('  To publish for real: FACEBOOK_ACTUALLY_POST=true npm test -- --grep post');
   } else {
     console.log(`✓ Real post published to ${PAGE_URL}`);
     console.log(`  Content: "${content}"`);
-    if (MEDIA.length) console.log(`  Media:   ${MEDIA.join(', ')}`);
+    console.log(`  Images:  ${MEDIA.length} attached`);
   }
 });
+

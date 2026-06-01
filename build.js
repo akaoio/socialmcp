@@ -10,7 +10,6 @@
  *   build/server/index.js             — single-file Node bundle
  *   build/browser/background/index.js — bundled service worker (ESM)
  *   build/browser/<p>/content.js      — bundled content scripts (IIFE)
- *   build/browser/relay/              — minimal relay page for tests
  *   build/browser/manifest.json       — generated from src + plugin hosts.js
  */
 
@@ -124,12 +123,8 @@ async function buildext() {
   const baseHostPerms = (baseManifest.host_permissions ?? []).filter(hp => !platformHostPerms.includes(hp));
   baseManifest.host_permissions = [...baseHostPerms, ...platformHostPerms];
   fs.writeFileSync(`${outdir}/manifest.json`, JSON.stringify(baseManifest, null, 2));
-  // Relay page (minimal test dispatch page — no UI)
-  fs.mkdirSync(`${outdir}/relay`, { recursive: true });
-  fs.copyFileSync('src/browser/relay/relay.html', `${outdir}/relay/relay.html`);
-  fs.copyFileSync('src/browser/relay/relay.js',   `${outdir}/relay/relay.js`);
 
-  console.log('✓ manifest + relay copied');
+  console.log('✓ manifest copied');
 }
 
 // ── Runner ────────────────────────────────────────────────────────────────────

@@ -45,7 +45,7 @@ mcp.tool(
   },
   // bridge.resolvemedia converts local paths to data URLs before sending to extension
   async ({ platform: p, page_url, content, media, dryrun }) =>
-    reply(await bridge.send(p, 'post', { page_url, content, media: media ?? [], dryrun: dryrun ?? false }))
+    reply(await bridge.send(p, 'post', { page_url, content, media: media ?? [], dryrun: dryrun ?? false }, 90000))
 );
 
 mcp.tool(
