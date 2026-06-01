@@ -162,4 +162,4 @@ scripts/debug-*.txt
 .env.*.local
 
 build/
-tmp/
+tmp/*.traineddata
