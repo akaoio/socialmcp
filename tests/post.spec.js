@@ -1,12 +1,19 @@
 /**
  * Facebook post — integration tests
  *
- * Tests the full production pipeline for posting to a Facebook Page:
- *   dispatch post → background/post.js
- *   → navigate /pages/?category=your_pages
- *   → content script switchpage (switch account to the target page)
- *   → navigate page_url
- *   → content script postpage (open compose dialog, type content)
+ * Tests the full production pipeline for posting to a Facebook Page via MCP:
+ *
+ *   test stdin (JSON-RPC tools/call post)
+ *   → MCP server (index.js)
+ *   → bridge.send() → HTTP relay localhost:8420
+ *   → peer.js GET /job
+ *   → dispatch → facebook/background/post.js
+ *     → navigate /pages/?category=your_pages
+ *     → content script switchpage (switch account to the target page)
+ *     → navigate page_url
+ *     → content script postpage (open compose dialog, type content)
+ *   → POST /result/:id
+ *   → MCP server stdout (JSON-RPC response)
  *
  * Two modes:
  *
@@ -41,13 +48,14 @@
  *   FACEBOOK_POST_PAGE=https://www.facebook.com/akaoofficial \
  *   npm test -- --grep post
  */
-import { test, expect, chromium }    from '@playwright/test';
-import { join, extname }             from 'path';
+import { test, expect, chromium }           from '@playwright/test';
+import { join, extname }                    from 'path';
 import { mkdtempSync, rmSync, readFileSync } from 'fs';
-import { tmpdir }                    from 'os';
+import { tmpdir }                           from 'os';
+import { startmcp }                         from './mcpclient.js';
 
 // Convert a local file path to a base64 data URL so the content script
-// can fetch it (content scripts cannot access the local filesystem).
+// can fetch it (content scripts cannot access the local filesystem directly).
 function todataurl(filePath) {
   const mimes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
                   '.gif': 'image/gif', '.webp': 'image/webp', '.mp4': 'video/mp4' };
@@ -56,21 +64,25 @@ function todataurl(filePath) {
 }
 
 const EXT      = join(process.cwd(), 'build/browser');
-const COOKIES  = process.env.FACEBOOK_COOKIES      ? JSON.parse(process.env.FACEBOOK_COOKIES) : null;
-const PAGE_URL = process.env.FACEBOOK_POST_PAGE    ?? null;
+const COOKIES  = process.env.FACEBOOK_COOKIES     ? JSON.parse(process.env.FACEBOOK_COOKIES) : null;
+const PAGE_URL = process.env.FACEBOOK_POST_PAGE   ?? null;
 const REALLY   = process.env.FACEBOOK_ACTUALLY_POST === 'true';
-// Convert any local file paths to data URLs so the content script can fetch them.
-const MEDIA    = (process.env.FACEBOOK_POST_MEDIA  ? process.env.FACEBOOK_POST_MEDIA.split(',').map(s => s.trim()) : [])
+const MEDIA    = (process.env.FACEBOOK_POST_MEDIA ? process.env.FACEBOOK_POST_MEDIA.split(',').map(s => s.trim()) : [])
                    .map(p => p.startsWith('data:') || p.startsWith('http') ? p : todataurl(p));
 
 test.skip(!COOKIES || !PAGE_URL,
   'set FACEBOOK_COOKIES and FACEBOOK_POST_PAGE to enable post tests');
 
-let ctx, dash, eid, udir;
+let ctx, mcp, udir;
 
 test.beforeAll(async () => {
   udir = mkdtempSync(join(tmpdir(), 'socialmcp-post-'));
-  ctx  = await chromium.launchPersistentContext(udir, {
+
+  // Spawn MCP server first (bridge starts on :8420)
+  mcp = await startmcp();
+
+  // Launch Chromium with extension (peer.js connects to bridge)
+  ctx = await chromium.launchPersistentContext(udir, {
     headless: false,
     args: [
       '--headless=new',
@@ -78,9 +90,9 @@ test.beforeAll(async () => {
       `--load-extension=${EXT}`,
     ],
   });
-  const sw = ctx.serviceWorkers()[0] ?? await ctx.waitForEvent('serviceworker');
-  eid = sw.url().split('/')[2];
+  await (ctx.serviceWorkers()[0] ?? ctx.waitForEvent('serviceworker'));
 
+  // Inject session cookies, then verify login
   await ctx.addCookies(COOKIES);
   const setup = await ctx.newPage();
   await setup.goto('https://www.facebook.com', { waitUntil: 'domcontentloaded' });
@@ -89,50 +101,32 @@ test.beforeAll(async () => {
   }
   await setup.close();
 
-  dash = await ctx.newPage();
-  await dash.goto(`chrome-extension://${eid}/relay/relay.html`);
+  // Wait for peer.js to connect to the bridge relay
+  await mcp.waitforpeer();
 });
 
 test.afterAll(async () => {
   await ctx?.close();
+  mcp?.close();
   try { rmSync(udir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-// Helper — sends dispatch message from the relay page (real extension path).
-async function call(platform, action, params = {}) {
-  const resp = await dash.evaluate(
-    async ({ platform, action, params }) =>
-      new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage(
-          { type: 'ui:dispatch', platform, action, params },
-          r => {
-            if (chrome.runtime.lastError) reject(chrome.runtime.lastError.message);
-            else resolve(r);
-          }
-        );
-      }),
-    { platform, action, params }
-  );
-  if (resp?.error) throw new Error(resp.error);
-  return resp?.result;
-}
-
-test('post: full pipeline — compose dialog opens, content typed, Post button enabled', async () => {
+test('post: full MCP pipeline — compose dialog opens, content typed, Post button enabled', async () => {
   test.setTimeout(120_000);
 
-  const content  = `Test post — socialmcp ${REALLY ? 'REAL' : 'dry-run'} ${new Date().toISOString()}`;
-  const dryrun   = !REALLY;
+  const content = `Test post — socialmcp ${REALLY ? 'REAL' : 'dry-run'} ${new Date().toISOString()}`;
 
-  const result = await call('facebook', 'post', {
+  const result = await mcp.call('post', {
+    platform: 'facebook',
     page_url: PAGE_URL,
     content,
-    media: MEDIA,
-    dryrun,
+    media:   MEDIA,
+    dryrun:  !REALLY,
   });
 
   expect(result).toMatchObject({ success: true });
 
-  if (dryrun) {
+  if (!REALLY) {
     expect(result.dryrun).toBe(true);
     console.log(`✓ Dry-run: compose dialog opened, Post button found.`);
     console.log(`  Content: "${content}"`);

@@ -2,7 +2,7 @@
  * bridge.js
  * HTTP relay between the MCP server and the browser extension.
  *
- * Server listens on http://localhost:8420.
+ * Server listens on http://localhost:8765.
  * Extension background (peer.js) long-polls GET /job and POSTs to /result/:id.
  *
  * Protocol:
@@ -14,10 +14,11 @@ import http from 'http';
 import { launch }       from '../launch.js';
 import { resolvemedia } from './resolvemedia.js';
 
-const PORT    = 8420;
-const jobs    = [];        // queued jobs waiting for extension to pick up
-const waiters = [];        // pending GET /job responses waiting for a job
-const pending = new Map(); // id → { resolve, reject, timer }
+const PORT          = 8765;
+const NOAUTOLAUNCH  = process.env.SOCIALMCP_NO_AUTOLAUNCH === '1';
+const jobs          = [];        // queued jobs waiting for extension to pick up
+const waiters       = [];        // pending GET /job responses waiting for a job
+const pending       = new Map(); // id → { resolve, reject, timer }
 
 let lastpeerat = 0;     // timestamp of last GET /job from the extension
 let launching  = false; // true while a browser launch is in progress
@@ -25,6 +26,13 @@ let launching  = false; // true while a browser launch is in progress
 const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const u = new URL(req.url, 'http://x');
+
+  if (req.method === 'GET' && u.pathname === '/ready') {
+    const connected = Date.now() - lastpeerat < 6000;
+    res.writeHead(connected ? 200 : 503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ connected }));
+    return;
+  }
 
   if (req.method === 'GET' && u.pathname === '/job') {
     lastpeerat = Date.now();
@@ -100,7 +108,7 @@ export const bridge = {
       else jobs.push(job);
 
       const peerstale = Date.now() - lastpeerat > 5000;
-      if (peerstale && !launching) {
+      if (peerstale && !launching && !NOAUTOLAUNCH) {
         launching = true;
         setTimeout(() => {
           if (!pending.has(id)) { launching = false; return; }

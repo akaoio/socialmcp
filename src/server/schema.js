@@ -17,15 +17,17 @@ class sch {
       if (minimum != null) o.minimum = minimum;
       if (maximum != null) o.maximum = maximum;
     }
-    else if (type === 'enum')  { o.type = 'string'; o.enum = values; }
-    else if (type === 'array') { o.type = 'array';  o.items = items.json(); }
+    else if (type === 'enum')    { o.type = 'string';  o.enum = values; }
+    else if (type === 'array')   { o.type = 'array';   o.items = items.json(); }
+    else if (type === 'boolean') { o.type = 'boolean'; }
     return o;
   }
 }
 
 export const schema = {
-  string: ()       => new sch({ type: 'string' }),
-  number: ()       => new sch({ type: 'number' }),
-  enum:   (values) => new sch({ type: 'enum', values }),
-  array:  (items)  => new sch({ type: 'array', items }),
+  string:  ()       => new sch({ type: 'string' }),
+  number:  ()       => new sch({ type: 'number' }),
+  boolean: ()       => new sch({ type: 'boolean' }),
+  enum:    (values) => new sch({ type: 'enum', values }),
+  array:   (items)  => new sch({ type: 'array', items }),
 };

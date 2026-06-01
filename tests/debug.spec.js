@@ -1,14 +1,19 @@
 /**
  * Debug MCP tools — integration tests
  *
- * Proves screenshot, getdom, getaxstree, and ocr tools work end-to-end:
- *   relay sendMessage → background onmessage → dispatch → builtin handler
+ * Proves screenshot, getdom, getaxstree, and ocr tools work end-to-end
+ * through the full production pipeline:
  *
- * No mocks. Uses real Chromium + real extension + real network (facebook.com
- * login page — no credentials needed; debug tools work on any page).
+ *   test stdin (JSON-RPC)
+ *   → MCP server (index.js)
+ *   → bridge.send() → HTTP relay localhost:8420
+ *   → peer.js GET /job
+ *   → dispatch → builtin handler
+ *   → POST /result/:id
+ *   → MCP server stdout (JSON-RPC response)
  *
- * Each test sends { type: 'ui:dispatch', ... } from the relay page context,
- * the same message format that goes through background/onmessage → dispatch → builtin handler.
+ * No mocks. Uses real Chromium + extension + network.
+ * Facebook login page is used — no credentials needed; debug tools work on any page.
  *
  * Run: npm test -- --grep debug
  */
@@ -16,23 +21,20 @@ import { test, expect, chromium } from '@playwright/test';
 import { join }                   from 'path';
 import { mkdtempSync, rmSync }    from 'fs';
 import { tmpdir }                 from 'os';
+import { startmcp }               from './mcpclient.js';
 
 const EXT = join(process.cwd(), 'build/browser');
 
-// Call dispatch action via the relay page (real extension messaging path).
-async function call(dashPage, platform, action, params = {}) {
-  const resp = await dashPage.evaluate(
-    ({ platform, action, params }) => window.dispatch(platform, action, params),
-    { platform, action, params }
-  );
-  return resp?.result;
-}
-
-let ctx, dash, eid, udir;
+let ctx, mcp, udir;
 
 test.beforeAll(async () => {
   udir = mkdtempSync(join(tmpdir(), 'socialmcp-debug-'));
-  ctx  = await chromium.launchPersistentContext(udir, {
+
+  // Spawn MCP server first (bridge starts on :8420)
+  mcp = await startmcp();
+
+  // Launch Chromium with extension (peer.js connects to bridge)
+  ctx = await chromium.launchPersistentContext(udir, {
     headless: false,
     args: [
       '--headless=new',
@@ -40,30 +42,31 @@ test.beforeAll(async () => {
       `--load-extension=${EXT}`,
     ],
   });
-  const sw = ctx.serviceWorkers()[0] ?? await ctx.waitForEvent('serviceworker');
-  eid = sw.url().split('/')[2];
+  await (ctx.serviceWorkers()[0] ?? ctx.waitForEvent('serviceworker'));
 
-  dash = await ctx.newPage();
-  await dash.goto(`chrome-extension://${eid}/relay/relay.html`);
+  // Wait for peer.js to connect to the bridge relay before calling tools
+  await mcp.waitforpeer();
 });
 
 test.afterAll(async () => {
   await ctx?.close();
+  mcp?.close();
   try { rmSync(udir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-test('screenshot: returns valid PNG data URL', async () => {
+test('screenshot: returns valid PNG image via MCP', async () => {
   test.setTimeout(60_000);
-  const result = await call(dash, 'facebook', 'screenshot');
+  const result = await mcp.call('screenshot', { platform: 'facebook' });
 
-  expect(typeof result.dataurl).toBe('string');
-  expect(result.dataurl).toMatch(/^data:image\/png;base64,/);
-  expect(result.dataurl.replace('data:image/png;base64,', '').length).toBeGreaterThan(1000);
+  expect(result.type).toBe('image');
+  expect(result.mimeType).toBe('image/png');
+  expect(typeof result.data).toBe('string');
+  expect(result.data.length).toBeGreaterThan(1000);
 });
 
-test('getdom: returns real HTML document', async () => {
+test('getdom: returns real HTML document via MCP', async () => {
   test.setTimeout(60_000);
-  const result = await call(dash, 'facebook', 'getdom');
+  const result = await mcp.call('getdom', { platform: 'facebook' });
 
   expect(typeof result.html).toBe('string');
   expect(result.html.length).toBeGreaterThan(500);
@@ -72,22 +75,21 @@ test('getdom: returns real HTML document', async () => {
   expect(result.html.toLowerCase()).toContain('facebook');
 });
 
-test('getaxstree: returns non-empty accessibility tree', async () => {
+test('getaxstree: returns non-empty accessibility tree via MCP', async () => {
   test.setTimeout(60_000);
-  const result = await call(dash, 'facebook', 'getaxstree');
+  const result = await mcp.call('getaxstree', { platform: 'facebook' });
 
   expect(typeof result.tree).toBe('string');
   expect(result.tree).not.toBe('(empty)');
   expect(result.tree).toMatch(/<[a-z]/);
 });
 
-test('ocr: extracts text from screenshot via tesseract.js', async () => {
+test('ocr: extracts text from current tab via MCP pipeline', async () => {
   test.setTimeout(120_000);
+  // ocr tool: bridge.send screenshot → tesseract on server → { text }
+  const result = await mcp.call('ocr', { platform: 'facebook' });
 
-  const { dataurl } = await call(dash, 'facebook', 'screenshot');
-  const { ocr } = await import('../src/server/ocr/ocr.js');
-  const text = await ocr(dataurl);
-
-  expect(typeof text).toBe('string');
-  expect(text.length).toBeGreaterThan(3);
+  expect(typeof result.text).toBe('string');
+  expect(result.text.length).toBeGreaterThan(3);
 });
+

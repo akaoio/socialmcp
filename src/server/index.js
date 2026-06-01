@@ -40,10 +40,12 @@ mcp.tool(
     content: schema.string().describe('Text content of the post'),
     media: schema.array(schema.string()).optional()
       .describe('File paths or URLs of images/videos to attach'),
+    dryrun: schema.boolean().optional()
+      .describe('If true, opens the compose dialog and verifies it but does NOT click Post'),
   },
   // bridge.resolvemedia converts local paths to data URLs before sending to extension
-  async ({ platform: p, page_url, content, media }) =>
-    reply(await bridge.send(p, 'post', { page_url, content, media: media ?? [] }))
+  async ({ platform: p, page_url, content, media, dryrun }) =>
+    reply(await bridge.send(p, 'post', { page_url, content, media: media ?? [], dryrun: dryrun ?? false }))
 );
 
 mcp.tool(
