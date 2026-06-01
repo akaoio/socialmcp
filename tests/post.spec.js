@@ -53,6 +53,7 @@ import { join, extname }                    from 'path';
 import { mkdtempSync, rmSync, readFileSync } from 'fs';
 import { tmpdir }                           from 'os';
 import { startmcp }                         from './mcpclient.js';
+import { getcookies }                       from './cookies.js';
 
 // Convert a local file path to a base64 data URL so the content script
 // can fetch it (content scripts cannot access the local filesystem directly).
@@ -64,14 +65,15 @@ function todataurl(filePath) {
 }
 
 const EXT      = join(process.cwd(), 'build/browser');
-const COOKIES  = process.env.FACEBOOK_COOKIES     ? JSON.parse(process.env.FACEBOOK_COOKIES) : null;
+const COOKIES  = getcookies();
 const PAGE_URL = process.env.FACEBOOK_POST_PAGE   ?? null;
 const REALLY   = process.env.FACEBOOK_ACTUALLY_POST === 'true';
 const MEDIA    = (process.env.FACEBOOK_POST_MEDIA ? process.env.FACEBOOK_POST_MEDIA.split(',').map(s => s.trim()) : [])
                    .map(p => p.startsWith('data:') || p.startsWith('http') ? p : todataurl(p));
 
 test.skip(!COOKIES || !PAGE_URL,
-  'set FACEBOOK_COOKIES and FACEBOOK_POST_PAGE to enable post tests');
+  !COOKIES ? 'no Facebook cookies — log in to Chromium first or set FACEBOOK_COOKIES'
+           : 'set FACEBOOK_POST_PAGE to enable post tests');
 
 let ctx, mcp, udir;
 

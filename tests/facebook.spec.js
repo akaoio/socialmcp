@@ -25,14 +25,13 @@ import { test, expect, chromium } from '@playwright/test';
 import { join }                   from 'path';
 import { mkdtempSync, rmSync }    from 'fs';
 import { tmpdir }                 from 'os';
-import { startmcp }               from './mcpclient.js';
+import { startmcp }   from './mcpclient.js';
+import { getcookies } from './cookies.js';
 
 const EXT     = join(process.cwd(), 'build/browser');
-const COOKIES = process.env.FACEBOOK_COOKIES
-  ? JSON.parse(process.env.FACEBOOK_COOKIES)
-  : null;
+const COOKIES = getcookies();
 
-test.skip(!COOKIES, 'set FACEBOOK_COOKIES env var to enable real-Facebook tests');
+test.skip(!COOKIES, 'no Facebook cookies — log in to Chromium first or set FACEBOOK_COOKIES');
 
 let ctx, mcp, udir;
 
