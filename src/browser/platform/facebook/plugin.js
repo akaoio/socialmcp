@@ -1,6 +1,6 @@
 import { hosts } from './hosts.js';
-import { post }  from './background/post.js';
-import { scan }  from './background/scan.js';
+import { post }  from './background/post/post.js';
+import { scan }  from './background/scan/scan.js';
 
 export default {
   id:    'facebook',

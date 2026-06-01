@@ -19,7 +19,7 @@ import { schema }               from './schema.js';
 import { mcpserver }            from './mcpserver.js';
 import { stdioservertransport } from './stdioservertransport.js';
 import { bridge }               from './bridge/bridge.js';
-import { ocr }                  from './ocr.js';
+import { ocr }                  from './ocr/ocr.js';
 
 const mcp = new mcpserver({ name: 'socialmcp', version: '1.0.0' });
 
