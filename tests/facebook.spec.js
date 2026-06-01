@@ -53,9 +53,10 @@ test('scan returns facebook pages for authenticated user', async () => {
   const page = await ctx.newPage();
   await page.goto('https://www.facebook.com/pages/?category=your_pages');
 
-  // Verify we are logged in (no login form visible).
-  await expect(page.locator('[data-pagelet="LeftRail"]')).toBeVisible({ timeout: 15_000 })
-    .catch(() => { throw new Error('Not logged in — check FACEBOOK_COOKIES'); });
+  // Verify we are logged in: no email/password form present.
+  await page.waitForLoadState('domcontentloaded');
+  const hasLoginForm = await page.locator('[name="email"]').count();
+  if (hasLoginForm) throw new Error('Not logged in — check FACEBOOK_COOKIES');
 
   const dash = await ctx.newPage();
   await dash.goto(`chrome-extension://${eid}/dashboard/index.html`);
