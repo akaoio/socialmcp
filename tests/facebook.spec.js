@@ -68,7 +68,7 @@ test('scan: dashboard button triggers full pipeline and returns real pages', asy
   test.setTimeout(90_000); // navigate(3500) + getpages sleep(3500) + FB network
 
   const dash = await ctx.newPage();
-  await dash.goto(`chrome-extension://${eid}/dashboard/index.html`);
+  await dash.goto(`chrome-extension://${eid}/relay/relay.html`);
 
   // Activate the Facebook plugin panel.
   await dash.getByRole('button', { name: 'Facebook' }).click();

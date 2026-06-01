@@ -1,7 +1,7 @@
 /**
  * Integration tests — Social MCP Chrome extension
  *
- * Proves the extension loads correctly and the dashboard UI renders.
+ * Proves the extension loads and the service worker starts correctly.
  * Full pipeline (dispatch → background → content script → real FB) is
  * covered by facebook.spec.js.
  *
@@ -39,10 +39,11 @@ test('service worker starts with correct url', () => {
   expect(sw.url()).toMatch(/chrome-extension:\/\/.+\/background\/index\.js/);
 });
 
-test('dashboard renders facebook plugin', async () => {
+test('relay page loads and exposes dispatch', async () => {
   const page = await ctx.newPage();
-  await page.goto(`chrome-extension://${eid}/dashboard/index.html`);
-  await expect(page.getByRole('button', { name: 'Facebook' })).toBeVisible();
+  await page.goto(`chrome-extension://${eid}/relay/relay.html`);
+  const hasDispatch = await page.evaluate(() => typeof window.dispatch === 'function');
+  expect(hasDispatch).toBe(true);
   await page.close();
 });
 

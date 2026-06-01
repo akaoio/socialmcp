@@ -2,12 +2,12 @@
  * Debug MCP tools — integration tests
  *
  * Proves screenshot, getdom, getaxstree, and ocr tools work end-to-end:
- *   dashboard sendMessage → background onmessage → dispatch → builtin handler
+ *   relay sendMessage → background onmessage → dispatch → builtin handler
  *
  * No mocks. Uses real Chromium + real extension + real network (facebook.com
  * login page — no credentials needed; debug tools work on any page).
  *
- * Each test sends { type: 'ui:dispatch', ... } from the dashboard context,
+ * Each test sends { type: 'ui:dispatch', ... } from the relay page context,
  * exactly the same message the dashboard UI sends when a user clicks a button.
  *
  * Run: npm test -- --grep debug
@@ -19,22 +19,12 @@ import { tmpdir }                 from 'os';
 
 const EXT = join(process.cwd(), 'build/browser');
 
-// Call dispatch action from the dashboard page (real extension messaging path).
+// Call dispatch action via the relay page (real extension messaging path).
 async function call(dashPage, platform, action, params = {}) {
   const resp = await dashPage.evaluate(
-    async ({ platform, action, params }) =>
-      new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage(
-          { type: 'ui:dispatch', platform, action, params },
-          r => {
-            if (chrome.runtime.lastError) reject(chrome.runtime.lastError.message);
-            else resolve(r);
-          }
-        );
-      }),
+    ({ platform, action, params }) => window.dispatch(platform, action, params),
     { platform, action, params }
   );
-  if (resp?.error) throw new Error(resp.error);
   return resp?.result;
 }
 
@@ -54,7 +44,7 @@ test.beforeAll(async () => {
   eid = sw.url().split('/')[2];
 
   dash = await ctx.newPage();
-  await dash.goto(`chrome-extension://${eid}/dashboard/index.html`);
+  await dash.goto(`chrome-extension://${eid}/relay/relay.html`);
 });
 
 test.afterAll(async () => {

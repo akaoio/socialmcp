@@ -90,7 +90,7 @@ test.beforeAll(async () => {
   await setup.close();
 
   dash = await ctx.newPage();
-  await dash.goto(`chrome-extension://${eid}/dashboard/index.html`);
+  await dash.goto(`chrome-extension://${eid}/relay/relay.html`);
 });
 
 test.afterAll(async () => {

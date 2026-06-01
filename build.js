@@ -10,7 +10,7 @@
  *   build/server/index.js             — single-file Node bundle
  *   build/browser/background/index.js — bundled service worker (ESM)
  *   build/browser/<p>/content.js      — bundled content scripts (IIFE)
- *   build/browser/dashboard/index.js  — bundled dashboard (IIFE)
+ *   build/browser/relay/              — minimal relay page for tests
  *   build/browser/manifest.json       — generated from src + plugin hosts.js
  */
 
@@ -105,17 +105,6 @@ async function buildext() {
     console.log(`✓ ${p}/content → build/browser/${p}/content.js`);
   }
 
-  // Dashboard (IIFE)
-  await esbuild.build({
-    ...common,
-    plugins:     browserplugins,
-    entryPoints: ['src/browser/dashboard/index.js'],
-    outfile:     `${outdir}/dashboard/index.js`,
-    format:      'iife',
-    platform:    'browser',
-  });
-  console.log('✓ dashboard → build/browser/dashboard/index.js');
-
   // Generate manifest.json with platform-derived content_scripts + host_permissions.
   // Read each plugin's hosts.js by simple regex — we cannot import them
   // (they may transitively load chrome.* APIs).
@@ -135,26 +124,12 @@ async function buildext() {
   const baseHostPerms = (baseManifest.host_permissions ?? []).filter(hp => !platformHostPerms.includes(hp));
   baseManifest.host_permissions = [...baseHostPerms, ...platformHostPerms];
   fs.writeFileSync(`${outdir}/manifest.json`, JSON.stringify(baseManifest, null, 2));
-  fs.copyFileSync('src/browser/dashboard/index.html', `${outdir}/dashboard/index.html`);
-  fs.copyFileSync('src/browser/dashboard/index.css',  `${outdir}/dashboard/index.css`);
+  // Relay page (minimal test dispatch page — no UI)
+  fs.mkdirSync(`${outdir}/relay`, { recursive: true });
+  fs.copyFileSync('src/browser/relay/relay.html', `${outdir}/relay/relay.html`);
+  fs.copyFileSync('src/browser/relay/relay.js',   `${outdir}/relay/relay.js`);
 
-  // Copy plugin CSS files (each platform may declare its own panel.css)
-  function hascss(dirpath) {
-    return fs.readdirSync(dirpath, { withFileTypes: true }).some(e =>
-      e.isFile() && e.name.endsWith('.css') ||
-      e.isDirectory() && hascss(`${dirpath}/${e.name}`)
-    );
-  }
-  fs.cpSync('src/browser/platform', `${outdir}/platform`, {
-    recursive: true,
-    filter: src => {
-      const stat = fs.statSync(src);
-      if (stat.isFile()) return src.endsWith('.css');
-      return hascss(src);
-    },
-  });
-
-  console.log('✓ manifest + dashboard + plugin css copied');
+  console.log('✓ manifest + relay copied');
 }
 
 // ── Runner ────────────────────────────────────────────────────────────────────
