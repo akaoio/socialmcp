@@ -15,7 +15,7 @@ Filename matches the function it exports (`post.js` exports `post`).
 
 Social MCP lets AI agents drive social media via clean MCP tool calls instead of DOM scraping. Two parts:
 
-1. **Node MCP server** (`src/server/`) — stdio MCP; transport to the extension is **not yet implemented** — tools throw a clear error until wired.
+1. **Node MCP server** (`src/server/`) — stdio MCP; communicates with the extension via an HTTP long-poll relay (`bridge.js` + `peer.js`).
 2. **Chrome MV3 extension** (`src/browser/`) — plugin-based host (background + dashboard) that loads platform plugins.
 
 **Supported platforms:** `facebook` (active), `x` / `instagram` / `threads` (schema-reserved, plugin pending).
@@ -25,8 +25,8 @@ Social MCP lets AI agents drive social media via clean MCP tool calls instead of
 ```
 AI Agent (stdio/MCP)
     └── src/server/index.js          MCP tools
-            └── src/server/bridge.js (placeholder — throws until transport added)
-                    └── src/browser/background/index.js  MV3 SW
+            └── src/server/bridge.js (HTTP long-poll relay on localhost:8420)
+                    └── src/browser/background/peer.js  long-poll client
                             └── src/browser/background/dispatch.js  ← reads plugin registry
                                     └── src/browser/platform/<id>/content.js  DOM actions
 ```
@@ -86,11 +86,13 @@ src/browser/platform/<id>/
 ## Browser core (platform-agnostic)
 
 ### `src/browser/background/`
-- `index.js` — service-worker entry; wires `chrome.action.onClicked` + `chrome.runtime.onMessage`.
+- `index.js` — service-worker entry; wires `chrome.action.onClicked` + `chrome.runtime.onMessage`; starts `peer.js` long-poll loop.
 - `onmessage.js` — receives `{ type: 'ui:dispatch', platform, action, params }` from the dashboard, calls `dispatch`, replies via `sendResponse`.
 - `dispatch.js` — looks up plugin in registry; if `plugin.background[action]` exists calls it with `(tab, params)`; otherwise falls back to generic `findtab → sendmessage` (no navigation, no platform-specific magic).
 - `findtab.js` — `findtab(hosts)` returns first `chrome.tabs` whose URL includes any host string.
+- `grouptab.js` — `grouptab(tabId)` adds the tab to a "socialmcp" tab group (creates one if absent).
 - `navigate.js`, `sendmessage.js` — generic Chrome tab helpers (imported by plugin background handlers as needed).
+- `waitload.js` — `waitload(tabId, extraWait?)` resolves when tab finishes loading + optional extra delay.
 - `opendashboard.js` — opens the dashboard page.
 
 > **Transport:** HTTP relay on `http://localhost:8420`. Server (`bridge.js`) queues jobs; extension (`peer.js`) long-polls `GET /job` and POSTs results to `POST /result/:id`.
@@ -241,7 +243,7 @@ FACEBOOK_COOKIES=$(node scripts/extractcookies.js) npm test   # include real Fac
 **Design principles:** no mocks, no fakes — every test exercises real production code paths end-to-end. `facebook.spec.js` proves the entire chain works on live Facebook.
 
 **Manual verification:**
-1. **Server**: `node src/server/index.js` — starts the stdio MCP server; tool calls will throw until a transport is implemented.
+1. **Server**: `node src/server/index.js` — starts the stdio MCP server + HTTP relay on `localhost:8420`. Tool calls will **timeout** if the extension is not loaded and connected.
 2. **Extension**: load `src/browser/` (or `build/browser/` after `npm run build:ext`) as an unpacked extension → open the dashboard via the extension action → use the panel to invoke plugin actions.
-3. **Tools**: `npx @modelcontextprotocol/inspector node src/server/index.js` — the schema lists every tool; calls will error until a transport is wired.
+3. **Tools**: `npx @modelcontextprotocol/inspector node src/server/index.js` — the schema lists every tool; calls require the extension to be running and connected via the relay.
 

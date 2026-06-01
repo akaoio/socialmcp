@@ -4,7 +4,7 @@ Social MCP là một lớp abstraction cho phép AI agents thao tác mạng xã 
 
 Bao gồm hai thành phần:
 - **Chrome Extension (MV3)**: kiến trúc plugin. Background + dashboard là khung dùng chung; mỗi platform là một plugin tự chứa.
-- **Node MCP Server**: expose MCP tools cho AI agents. Transport giữa server và extension hiện chưa có — tạm thời chỉ dashboard điều khiển được plugin.
+- **Node MCP Server**: expose MCP tools cho AI agents. Kết nối với extension qua HTTP long-poll relay (`bridge.js` ↔ `peer.js`) trên `localhost:8420`.
 
 ## Vì sao cần Social MCP
 
@@ -22,7 +22,7 @@ AI Agent (Claude, GPT…)
     │  stdio · MCP protocol
     ▼
 Node MCP Server  (src/server/index.js)
-    │  ⚠️ transport chưa implement
+    │  HTTP long-poll relay  localhost:8420  (bridge.js ↔ peer.js)
     ▼
 Extension Background  (src/browser/background/index.js)
     │  reads src/browser/plugins.js → dispatch by platform id
@@ -104,7 +104,7 @@ src/
         scan/                        # quét danh sách Page + selectors.js riêng
   server/
     index.js                         # MCP server (stdio transport)
-    bridge.js                        # placeholder — transport chưa implement
+    bridge.js                        # HTTP relay server (long-poll, localhost:8420)
     mcp.js                           # MCP JSON-RPC + schema builder
 build/                               # output đã bundle/minify
 ```
@@ -162,11 +162,9 @@ FACEBOOK_COOKIES=$(node scripts/extractcookies.js) npm test   # + real Facebook 
 
 ## Biến môi trường
 
-Hiện tại không cần biến môi trường nào — transport giữa MCP server và extension chưa được implement.
+Hiện tại không cần biến môi trường nào — port relay (`8420`) được hardcode trong `bridge.js`.
 
-> **Farm setup** (kế hoạch): mỗi browser profile chạy một extension riêng; mỗi MCP server instance dùng port khác nhau — sẽ được quy định khi transport được thêm.
-
-## Thêm một platform mới
+> **Farm setup** (kế hoạch): mỗi browser profile chạy một extension riêng; mỗi MCP server instance dùng port khác nhau.
 
 Xem chi tiết trong [docs/plugin-dev-guide.md](docs/plugin-dev-guide.md). Tóm tắt:
 
@@ -178,4 +176,4 @@ Xem chi tiết trong [docs/plugin-dev-guide.md](docs/plugin-dev-guide.md). Tóm 
 
 Các id `x`, `instagram`, `threads` đã được khai báo sẵn trong schema MCP — chỉ cần thêm plugin tương ứng là dùng được.
 
-> ⚠️ **Lưu ý:** transport giữa MCP server và extension hiện chưa được implement. Dashboard là cách duy nhất để invoke actions hiện nay.
+> ⚠️ **Lưu ý:** MCP tool calls sẽ **timeout** nếu extension chưa được load và kết nối với relay (`localhost:8420`). Load extension trước khi gọi tools qua AI agent.

@@ -239,14 +239,11 @@ If the tool is brand new:
 
 ## The MCP-server-to-extension transport
 
-> ⚠️ **No transport between the MCP server and the extension exists yet.**
-> `src/server/bridge.js` is a placeholder — every `bridge.send(...)` throws `socialmcp: no transport between MCP server and extension yet`. The AI-agent path is therefore non-functional today; the dashboard is the only way to drive plugin actions.
->
-> When a transport is added later, only two files need to change:
-> 1. `src/server/bridge.js` — replace the stub with the real `send(platform, action, params)` implementation.
-> 2. `src/browser/background/index.js` — receive transport messages and call the existing `dispatch(platform, action, params)` (the same generic dispatcher the dashboard uses).
->
-> Plugins do not need to change — they already speak the public-action contract.
+The transport is an **HTTP long-poll relay** on `localhost:8420`:
+- `src/server/bridge.js` — HTTP server; `send(platform, action, params)` queues a job and awaits the result.
+- `src/browser/background/peer.js` — service-worker loop; long-polls `GET /job`, calls `dispatch`, POSTs result to `POST /result/:id`.
+
+Tool calls will **timeout** (default 30 s) if the extension is not loaded and connected. No external dependencies — uses Node `http` built-in and the service worker's native `fetch`.
 
 ## Build & test
 
