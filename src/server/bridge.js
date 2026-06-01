@@ -20,15 +20,15 @@ const jobs    = [];        // queued jobs waiting for extension to pick up
 const waiters = [];        // pending GET /job responses waiting for a job
 const pending = new Map(); // id → { resolve, reject, timer }
 
-let lastPeerAt  = 0;   // timestamp of last GET /job from the extension
-let launching   = false; // true while a browser launch is in progress
+let lastpeerat = 0;    // timestamp of last GET /job from the extension
+let launching  = false; // true while a browser launch is in progress
 
 const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const u = new URL(req.url, 'http://x');
 
   if (req.method === 'GET' && u.pathname === '/job') {
-    lastPeerAt = Date.now();
+    lastpeerat = Date.now();
     if (jobs.length > 0) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(jobs.shift()));
@@ -83,26 +83,25 @@ server.on('error', err => process.stderr.write(`socialmcp: relay error — ${err
 
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' };
 
-function toDataUrl(p) {
+function todataurl(p) {
   const ext  = path.extname(p).slice(1).toLowerCase();
   const mime = MIME[ext] ?? 'application/octet-stream';
   return `data:${mime};base64,` + fs.readFileSync(p).toString('base64');
 }
 
-function resolveMedia(params) {
+function resolvemedia(params) {
   if (!params?.media?.length) return params;
   return {
     ...params,
-    media: params.media.map(m => (path.isAbsolute(m) && fs.existsSync(m)) ? toDataUrl(m) : m),
+    media: params.media.map(m => (path.isAbsolute(m) && fs.existsSync(m)) ? todataurl(m) : m),
   };
 }
 
-export default class Bridge {
-  start() { return this; }
-
+// Exported singleton — HTTP server starts at module load, no init needed.
+export const bridge = {
   async send(platform, action, params, timeout = 30000) {
     const id      = Date.now().toString(36) + Math.random().toString(36).slice(2);
-    const payload = resolveMedia(params);
+    const payload = resolvemedia(params);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
@@ -119,13 +118,12 @@ export default class Bridge {
       else jobs.push(job);
 
       // Auto-launch: if no peer has polled recently, start the browser.
-      const peerStale = Date.now() - lastPeerAt > 5000;
-      if (peerStale && !launching) {
+      const peerstale = Date.now() - lastpeerat > 5000;
+      if (peerstale && !launching) {
         launching = true;
         setTimeout(() => {
-          // Re-check: peer may have connected during the 2s grace window.
           if (!pending.has(id)) { launching = false; return; }
-          if (Date.now() - lastPeerAt <= 5000) { launching = false; return; }
+          if (Date.now() - lastpeerat <= 5000) { launching = false; return; }
           launch()
             .catch(e => process.stderr.write(`socialmcp: ${e.message}\n`))
             .finally(() => {
@@ -134,7 +132,5 @@ export default class Bridge {
         }, 2000);
       }
     });
-  }
-}
-
-
+  },
+};

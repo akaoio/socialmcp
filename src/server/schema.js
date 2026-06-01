@@ -1,11 +1,11 @@
-class Sch {
+class sch {
   constructor(d) { this.d = d; }
 
-  describe(t)  { return new Sch({ ...this.d, description: t }); }
-  optional()   { return new Sch({ ...this.d, optional: true }); }
-  int()        { return new Sch({ ...this.d, integer: true }); }
-  min(n)       { return new Sch({ ...this.d, minimum: n }); }
-  max(n)       { return new Sch({ ...this.d, maximum: n }); }
+  describe(t)  { return new sch({ ...this.d, description: t }); }
+  optional()   { return new sch({ ...this.d, optional: true }); }
+  int()        { return new sch({ ...this.d, integer: true }); }
+  min(n)       { return new sch({ ...this.d, minimum: n }); }
+  max(n)       { return new sch({ ...this.d, maximum: n }); }
 
   json() {
     const { type, values, items, description, integer, minimum, maximum } = this.d;
@@ -24,8 +24,8 @@ class Sch {
 }
 
 export const schema = {
-  string: ()       => new Sch({ type: 'string' }),
-  number: ()       => new Sch({ type: 'number' }),
-  enum:   (values) => new Sch({ type: 'enum', values }),
-  array:  (items)  => new Sch({ type: 'array', items }),
+  string: ()       => new sch({ type: 'string' }),
+  number: ()       => new sch({ type: 'number' }),
+  enum:   (values) => new sch({ type: 'enum', values }),
+  array:  (items)  => new sch({ type: 'array', items }),
 };

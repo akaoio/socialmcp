@@ -8,10 +8,10 @@ const CACHE = join(tmpdir(), 'socialmcp-tessdata');
 // ocr(dataUrl, lang?) — runs Tesseract OCR on a PNG data URL via tesseract.js.
 // No system dependency — works after plain npm install.
 // Returns the extracted text.
-export async function ocr(dataUrl, lang = 'eng') {
+export async function ocr(dataurl, lang = 'eng') {
   const worker = await createWorker(lang, 1, { cachePath: CACHE });
   try {
-    const { data: { text } } = await worker.recognize(dataUrl);
+    const { data: { text } } = await worker.recognize(dataurl);
     return text.trim();
   } finally {
     await worker.terminate();

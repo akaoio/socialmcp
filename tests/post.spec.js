@@ -48,7 +48,7 @@ import { tmpdir }                    from 'os';
 
 // Convert a local file path to a base64 data URL so the content script
 // can fetch it (content scripts cannot access the local filesystem).
-function toDataUrl(filePath) {
+function todataurl(filePath) {
   const mimes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
                   '.gif': 'image/gif', '.webp': 'image/webp', '.mp4': 'video/mp4' };
   const mime = mimes[extname(filePath).toLowerCase()] || 'application/octet-stream';
@@ -61,7 +61,7 @@ const PAGE_URL = process.env.FACEBOOK_POST_PAGE    ?? null;
 const REALLY   = process.env.FACEBOOK_ACTUALLY_POST === 'true';
 // Convert any local file paths to data URLs so the content script can fetch them.
 const MEDIA    = (process.env.FACEBOOK_POST_MEDIA  ? process.env.FACEBOOK_POST_MEDIA.split(',').map(s => s.trim()) : [])
-                   .map(p => p.startsWith('data:') || p.startsWith('http') ? p : toDataUrl(p));
+                   .map(p => p.startsWith('data:') || p.startsWith('http') ? p : todataurl(p));
 
 test.skip(!COOKIES || !PAGE_URL,
   'set FACEBOOK_COOKIES and FACEBOOK_POST_PAGE to enable post tests');

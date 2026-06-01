@@ -33,8 +33,8 @@ export async function getaxstree(tab) {
         const role   = el.getAttribute('role') || el.tagName.toLowerCase();
         const label  = el.getAttribute('aria-label') || '';
         const id     = el.id ? `#${el.id}` : '';
-        const isLeaf = ![...el.children].some(c => keepers.has(c));
-        const text   = isLeaf ? (el.textContent?.trim().slice(0, 100) ?? '') : '';
+        const isleaf = ![...el.children].some(c => keepers.has(c));
+        const text   = isleaf ? (el.textContent?.trim().slice(0, 100) ?? '') : '';
         const indent = '  '.repeat(depth);
         const attrs  = [id, label ? `"${label}"` : '', text ? `"${text}"` : '']
           .filter(Boolean).join(' ');

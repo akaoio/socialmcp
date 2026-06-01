@@ -66,9 +66,9 @@ test('screenshot: returns valid PNG data URL', async () => {
   test.setTimeout(60_000);
   const result = await call(dash, 'facebook', 'screenshot');
 
-  expect(typeof result.dataUrl).toBe('string');
-  expect(result.dataUrl).toMatch(/^data:image\/png;base64,/);
-  expect(result.dataUrl.replace('data:image/png;base64,', '').length).toBeGreaterThan(1000);
+  expect(typeof result.dataurl).toBe('string');
+  expect(result.dataurl).toMatch(/^data:image\/png;base64,/);
+  expect(result.dataurl.replace('data:image/png;base64,', '').length).toBeGreaterThan(1000);
 });
 
 test('getdom: returns real HTML document', async () => {
@@ -94,9 +94,9 @@ test('getaxstree: returns non-empty accessibility tree', async () => {
 test('ocr: extracts text from screenshot via tesseract.js', async () => {
   test.setTimeout(120_000);
 
-  const { dataUrl } = await call(dash, 'facebook', 'screenshot');
+  const { dataurl } = await call(dash, 'facebook', 'screenshot');
   const { ocr } = await import('../src/server/ocr.js');
-  const text = await ocr(dataUrl);
+  const text = await ocr(dataurl);
 
   expect(typeof text).toBe('string');
   expect(text.length).toBeGreaterThan(3);
