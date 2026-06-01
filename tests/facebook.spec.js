@@ -5,14 +5,14 @@
  * Read-only — never posts or writes anything.
  *
  * Tests the complete production path:
- *   dashboard "Scan pages" click
- *   → dashboard/dispatch.js chrome.runtime.sendMessage
+ *   relay page window.dispatch()
+ *   → chrome.runtime.sendMessage
  *   → background/onmessage.js
  *   → background/dispatch.js
  *   → facebook/background/scan.js  (navigates FB tab, waits for load)
  *   → background/sendmessage.js
  *   → facebook/content.js HANDLERS.getpages  (manifest-injected, not manual)
- *   → DOM parse → result → dashboard UI updated
+ *   → DOM parse → result
  *
  * Get cookies:
  *   node scripts/extractcookies.js   (or see docs/diary for manual steps)
@@ -64,7 +64,7 @@ test.afterAll(async () => {
   try { rmSync(udir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-test('scan: dashboard button triggers full pipeline and returns real pages', async () => {
+test('scan: relay dispatch triggers full pipeline and returns real pages', async () => {
   test.setTimeout(90_000); // navigate(3500) + getpages sleep(3500) + FB network
 
   const dash = await ctx.newPage();

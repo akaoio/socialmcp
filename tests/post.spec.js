@@ -98,7 +98,7 @@ test.afterAll(async () => {
   try { rmSync(udir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-// Helper — sends dispatch message from the dashboard page (real extension path).
+// Helper — sends dispatch message from the relay page (real extension path).
 async function call(platform, action, params = {}) {
   const resp = await dash.evaluate(
     async ({ platform, action, params }) =>

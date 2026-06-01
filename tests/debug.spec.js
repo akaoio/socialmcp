@@ -8,7 +8,7 @@
  * login page — no credentials needed; debug tools work on any page).
  *
  * Each test sends { type: 'ui:dispatch', ... } from the relay page context,
- * exactly the same message the dashboard UI sends when a user clicks a button.
+ * the same message format that goes through background/onmessage → dispatch → builtin handler.
  *
  * Run: npm test -- --grep debug
  */
