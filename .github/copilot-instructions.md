@@ -89,7 +89,7 @@ src/browser/platform/<id>/
 - `index.js` — service-worker entry; wires `chrome.action.onClicked` + `chrome.runtime.onMessage`; starts `peer.js` long-poll loop.
 - `onmessage.js` — receives `{ type: 'ui:dispatch', platform, action, params }` from the dashboard, calls `dispatch`, replies via `sendResponse`.
 - `dispatch.js` — looks up plugin in registry; if `plugin.background[action]` exists calls it with `(tab, params)`; otherwise falls back to generic `findtab → sendmessage` (no navigation, no platform-specific magic).
-- `findtab.js` — `findtab(hosts)` returns first `chrome.tabs` whose URL includes any host string.
+- `findtab.js` — `findtab(id, hosts, url)` returns the socialmcp-owned tab for this platform (tracked in `chrome.storage.session`). **Never reuses user-opened tabs.** Creates a new tab on first call or if the owned tab was closed.
 - `grouptab.js` — `grouptab(tabId)` adds the tab to a "socialmcp" tab group (creates one if absent).
 - `navigate.js`, `sendmessage.js` — generic Chrome tab helpers (imported by plugin background handlers as needed).
 - `waitload.js` — `waitload(tabId, extraWait?)` resolves when tab finishes loading + optional extra delay.
@@ -127,11 +127,15 @@ There is no per-folder package.json. The root `package.json` has no runtime depe
 
 ### Bridge — `src/server/bridge.js`
 - **HTTP long-poll relay** on `http://localhost:8420`. Uses only Node `http` built-in — no external deps.
-- `GET /job` — long-poll (up to 25 s); returns next pending job as JSON or 204 if none arrive.
+- `GET /job` — long-poll (up to 25 s); returns next pending job as JSON or 204 if none arrive. Updates `lastPeerAt` on every hit.
 - `POST /result/:id` — extension posts `{ ok, value? }` or `{ ok: false, error }` to resolve the waiting `send()` promise.
 - `send(platform, action, params, timeout)` queues a job and awaits the result promise.
+- **Auto-launch:** if no peer has polled in the last 5 s, waits 2 s then calls `launch()` from `launch.js` to open Chromium. Re-launch is suppressed for 30 s after a successful launch attempt. Set `SOCIALMCP_CHROMIUM` if the binary isn't auto-detected.
 
-### Extension peer — `src/browser/background/peer.js`
+### Auto-launch — `src/server/launch.js`
+- Finds the Chromium binary (checks `SOCIALMCP_CHROMIUM` env var first, then common paths).
+- Spawns Chromium with a dedicated `--user-data-dir=~/.socialmcp/profile` (isolated profile, always loads the extension regardless of existing Chrome instances) and `--load-extension=build/browser`.
+- Requires `build/browser/` to exist — run `npm run build:ext` first.
 - Long-polls `GET http://localhost:8420/job` (26 s timeout, retries on error with 3 s backoff).
 - On 200: calls `dispatch(platform, action, params)`, POSTs result to `POST /result/:id`.
 - No external libraries — uses the service worker's native `fetch`.
@@ -174,7 +178,13 @@ The platform string in MCP must already be in `schema.enum([...])` in `src/serve
 
 ## Environment variables
 
-None right now. (Previous `SOCIALMCP_PORT` / `SOCIALMCP_SECRET` belonged to a removed transport.)
+| Variable | Default | Purpose |
+|---|---|---|
+| `SOCIALMCP_CHROMIUM` | auto-detected | Path to Chromium binary for auto-launch |
+
+Auto-detected candidates (in order): `/usr/lib/chromium/chromium`, `/usr/bin/chromium-browser`, `/usr/bin/google-chrome`, macOS Chrome.
+
+The relay port (`8420`) is hardcoded in `bridge.js`.
 
 ## Install — `install.sh`
 

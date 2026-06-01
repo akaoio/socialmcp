@@ -13,17 +13,22 @@
 import http from 'http';
 import fs   from 'fs';
 import path from 'path';
+import { launch } from './launch.js';
 
 const PORT    = 8420;
 const jobs    = [];        // queued jobs waiting for extension to pick up
 const waiters = [];        // pending GET /job responses waiting for a job
 const pending = new Map(); // id → { resolve, reject, timer }
 
+let lastPeerAt  = 0;   // timestamp of last GET /job from the extension
+let launching   = false; // true while a browser launch is in progress
+
 const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const u = new URL(req.url, 'http://x');
 
   if (req.method === 'GET' && u.pathname === '/job') {
+    lastPeerAt = Date.now();
     if (jobs.length > 0) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(jobs.shift()));
@@ -112,6 +117,22 @@ export default class Bridge {
       const job = { id, platform, action, params: payload ?? {} };
       if (waiters.length > 0) waiters.shift()(job);
       else jobs.push(job);
+
+      // Auto-launch: if no peer has polled recently, start the browser.
+      const peerStale = Date.now() - lastPeerAt > 5000;
+      if (peerStale && !launching) {
+        launching = true;
+        setTimeout(() => {
+          // Re-check: peer may have connected during the 2s grace window.
+          if (!pending.has(id)) { launching = false; return; }
+          if (Date.now() - lastPeerAt <= 5000) { launching = false; return; }
+          launch()
+            .catch(e => process.stderr.write(`socialmcp: ${e.message}\n`))
+            .finally(() => {
+              setTimeout(() => { launching = false; }, 30000);
+            });
+        }, 2000);
+      }
     });
   }
 }

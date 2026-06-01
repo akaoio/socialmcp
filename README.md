@@ -164,6 +164,12 @@ FACEBOOK_COOKIES=$(node scripts/extractcookies.js) npm test   # + real Facebook 
 
 Hiện tại không cần biến môi trường nào — port relay (`8420`) được hardcode trong `bridge.js`.
 
+| Biến | Mặc định | Mục đích |
+|---|---|---|
+| `SOCIALMCP_CHROMIUM` | tự detect | Đường dẫn Chromium binary cho auto-launch |
+
+Auto-detect theo thứ tự: `/usr/lib/chromium/chromium` → `/usr/bin/chromium-browser` → `/usr/bin/google-chrome` → macOS Chrome.
+
 > **Farm setup** (kế hoạch): mỗi browser profile chạy một extension riêng; mỗi MCP server instance dùng port khác nhau.
 
 Xem chi tiết trong [docs/plugin-dev-guide.md](docs/plugin-dev-guide.md). Tóm tắt:
@@ -176,4 +182,4 @@ Xem chi tiết trong [docs/plugin-dev-guide.md](docs/plugin-dev-guide.md). Tóm 
 
 Các id `x`, `instagram`, `threads` đã được khai báo sẵn trong schema MCP — chỉ cần thêm plugin tương ứng là dùng được.
 
-> ⚠️ **Lưu ý:** MCP tool calls sẽ **timeout** nếu extension chưa được load và kết nối với relay (`localhost:8420`). Load extension trước khi gọi tools qua AI agent.
+> ⚠️ **Lưu ý:** MCP tool calls sẽ **timeout** nếu extension chưa được load và kết nối với relay (`localhost:8420`). MCP server tự động launch Chromium nếu không thấy extension kết nối trong 5 giây — cần có `build/browser/` (`npm run build:ext`) và Chromium được cài. Đặt `SOCIALMCP_CHROMIUM` nếu Chromium không tự detect được.

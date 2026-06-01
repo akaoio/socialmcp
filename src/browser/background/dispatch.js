@@ -10,7 +10,7 @@ export async function dispatch(platform, action, params) {
   const plugin = REGISTRY[platform];
   if (!plugin) throw new Error(`Unknown platform: ${platform}`);
 
-  const tab = await findtab(plugin.hosts, plugin.url);
+  const tab = await findtab(plugin.id, plugin.hosts, plugin.url);
 
   // Explicit handler wins. Plugins should declare a handler for every public action
   // (MCP tool name) they support — see docs/plugin-dev-guide.md.
