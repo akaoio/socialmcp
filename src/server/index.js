@@ -17,6 +17,7 @@
 
 import { McpServer, StdioServerTransport, schema } from './mcp.js';
 import Bridge from './bridge.js';
+import { ocr } from './ocr.js';
 
 const bridge = new Bridge().start();
 const mcp = new McpServer({ name: 'socialmcp', version: '1.0.0' });
@@ -50,6 +51,47 @@ mcp.tool(
   { platform },
   async ({ platform: p }) =>
     reply(await bridge.send(p, 'scan', {}))
+);
+
+// ── Debug tools ───────────────────────────────────────────────────────────────
+
+mcp.tool(
+  'screenshot',
+  'Take a screenshot of the current platform tab. Returns a PNG image.',
+  { platform },
+  async ({ platform: p }) => {
+    const { dataUrl } = await bridge.send(p, 'screenshot', {});
+    const data = dataUrl.replace(/^data:image\/png;base64,/, '');
+    return { content: [{ type: 'image', data, mimeType: 'image/png' }] };
+  }
+);
+
+mcp.tool(
+  'getdom',
+  'Get the full HTML source of the current platform tab for debugging.',
+  { platform },
+  async ({ platform: p }) => reply(await bridge.send(p, 'getdom', {}))
+);
+
+mcp.tool(
+  'getaxstree',
+  'Get a compact accessibility tree of the current platform tab (roles, labels, interactive elements).',
+  { platform },
+  async ({ platform: p }) => reply(await bridge.send(p, 'getaxstree', {}))
+);
+
+mcp.tool(
+  'ocr',
+  'Extract visible text from the current platform tab using Tesseract OCR.',
+  {
+    platform,
+    lang: schema.string().optional().describe('Tesseract language code (default: eng)'),
+  },
+  async ({ platform: p, lang }) => {
+    const { dataUrl } = await bridge.send(p, 'screenshot', {});
+    const text = await ocr(dataUrl, lang ?? 'eng');
+    return reply({ text });
+  }
 );
 
 // ── Connect ───────────────────────────────────────────────────────────────────

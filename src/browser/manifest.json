@@ -21,7 +21,7 @@
   },
 
   "host_permissions": [
-    "https://*.facebook.com/*",
+    "<all_urls>",
     "http://localhost/*"
   ],
 
