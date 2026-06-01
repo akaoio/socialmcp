@@ -85,7 +85,7 @@ test('ocr: extracts text from screenshot via tesseract.js', async () => {
   test.setTimeout(120_000);
 
   const { dataurl } = await call(dash, 'facebook', 'screenshot');
-  const { ocr } = await import('../src/server/ocr.js');
+  const { ocr } = await import('../src/server/ocr/ocr.js');
   const text = await ocr(dataurl);
 
   expect(typeof text).toBe('string');
