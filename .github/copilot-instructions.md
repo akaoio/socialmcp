@@ -119,10 +119,12 @@ Uses only Node built-ins:
 
 | File | Purpose | Replaces |
 |------|---------|----------|
-| `src/server/mcp.js` | MCP JSON-RPC server + zod-compatible `schema` builder | `@modelcontextprotocol/sdk` + `zod` |
+| `src/server/schema.js` | zod-compatible `schema` builder | `zod` |
+| `src/server/mcpserver.js` | MCP JSON-RPC server | `@modelcontextprotocol/sdk` |
+| `src/server/stdioservertransport.js` | stdio transport for MCP | `@modelcontextprotocol/sdk` |
 | `src/server/bridge.js` | HTTP relay server (long-poll RPC) | — |
 | `src/server/launch.js` | Auto-launch Chromium with isolated profile + extension | — |
-| `src/server/ocr.js` | Server-side OCR via `tesseract` CLI (used by `ocr` tool) | — |
+| `src/server/ocr.js` | Server-side OCR via `tesseract.js` npm package | — |
 | `src/server/index.js` | Declares MCP tools via `mcp.tool(name, desc, schema, handler)` | — |
 
 There is no per-folder package.json. The root `package.json` has no runtime dependencies.

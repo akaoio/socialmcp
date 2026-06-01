@@ -15,14 +15,16 @@
  * }
  */
 
-import { McpServer, StdioServerTransport, schema } from './mcp.js';
+import { schema }                from './schema.js';
+import { mcpserver }             from './mcpserver.js';
+import { stdioservertransport }  from './stdioservertransport.js';
 import Bridge from './bridge.js';
 import { ocr } from './ocr.js';
 import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 
 const bridge = new Bridge().start();
-const mcp = new McpServer({ name: 'socialmcp', version: '1.0.0' });
+const mcp = new mcpserver({ name: 'socialmcp', version: '1.0.0' });
 
 // Reusable schema fragments
 const platform = schema.enum(['facebook', 'x', 'instagram', 'threads']);
@@ -108,5 +110,5 @@ mcp.tool(
 
 // ── Connect ───────────────────────────────────────────────────────────────────
 
-const transport = new StdioServerTransport();
+const transport = new stdioservertransport();
 await mcp.connect(transport);

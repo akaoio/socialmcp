@@ -1,4 +1,4 @@
-export const html = `
+export const panel = `
 <div class="panelhead">
   <h1>Facebook Pages</h1>
 </div>
