@@ -1,5 +1,5 @@
-import { navigate }    from '../../../background/navigate.js';
-import { sendmessage } from '../../../background/sendmessage.js';
+import { navigate }    from '../../../../background/navigate.js';
+import { sendmessage } from '../../../../background/sendmessage.js';
 
 // Public action: scan the current account's managed Pages.
 // Navigates the existing FB tab to the pages list, then asks the content

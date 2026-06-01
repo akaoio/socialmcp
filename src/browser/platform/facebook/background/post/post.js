@@ -1,5 +1,5 @@
-import { navigate }    from '../../../background/navigate.js';
-import { sendmessage } from '../../../background/sendmessage.js';
+import { navigate }    from '../../../../background/navigate.js';
+import { sendmessage } from '../../../../background/sendmessage.js';
 
 // Public MCP action: post a new post to a specific Facebook page.
 // Required param: page_url (full https URL of the page wall).
